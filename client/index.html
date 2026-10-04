@@ -384,6 +384,26 @@
       #crashed button:hover {
         box-shadow: 0 0 26px rgba(5, 217, 232, 0.55);
       }
+
+      /* Low-spec / "this is too much" fallback — drops the post-processing
+         composer back to a plain render (see postfx.ts). Deliberately small
+         and out of the way: it's an escape hatch, not a feature. */
+      #fxToggle {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+        background: color-mix(in srgb, var(--surface) 70%, transparent);
+        border: 1px solid color-mix(in srgb, var(--lilac) 40%, transparent);
+        color: var(--lilac);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      #fxToggle[aria-pressed="true"] {
+        color: var(--cyan);
+        border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+      }
     </style>
   </head>
   <body>
@@ -402,6 +422,7 @@
         <div id="crashedText"></div>
         <button id="restart">drive again</button>
       </div>
+      <button id="fxToggle" type="button" aria-pressed="false">reduce effects</button>
     </div>
     <div id="usernameModal" class="modal" hidden>
       <form id="usernameForm" class="panel">

@@ -1,39 +1,49 @@
-// Translucent cars at other players' best-of-the-day crash points. Synced by
-// polling, not push — a few minutes' staleness is fine for this (see
-// doc/adr/0001-stack.md); `scoreChanged()` server-side is the seam for a
-// future broadcast, not this file.
+// Translucent cars at other players' best-of-the-day crash points — the
+// single most important object in the scene (see plan.md: "the ghost is the
+// single most important object on screen"). Synced by polling, not push — a
+// few minutes' staleness is fine for this (see doc/adr/0001-stack.md);
+// `scoreChanged()` server-side is the seam for a future broadcast, not this
+// file.
+//
+// Each ghost gets its own material (a small hue variance around lavender,
+// seeded from the username) rather than sharing one, so a row of ghosts
+// reads as distinct presences rather than identical clones, plus a name
+// label projected into screen space every frame. No collision against
+// them — they were never solid, and that's deliberate: insubstantial,
+// something you drive past, not an obstacle.
 import * as THREE from "three";
 import { centerXAtDistance } from "./track.ts";
+import { hashString } from "./track.ts";
 import { getGhosts } from "./net.ts";
 import type { Ghost } from "./net.ts";
 import { palette } from "./palette.ts";
 
 const POLL_MIN_MS = 60_000;
 const POLL_JITTER_MS = 60_000;
+const BOB_HEIGHT = 0.08;
+const BOB_SPEED = 1.4;
 
-// Lavender, not the player's magenta or the obstacles' red — the one
-// deliberately vaporwave (not synthwave) colour in the scene. Phase 4 gives
-// each ghost its own material instance and a name label; this shared one is
-// the Phase 1 recolour.
-const ghostMaterial = new THREE.MeshStandardMaterial({
-  color: palette.lavender.three,
-  emissive: palette.lavender.three,
-  emissiveIntensity: 1.4,
-  transparent: true,
-  opacity: 0.4,
-  depthWrite: false,
-});
 const ghostGeometry = new THREE.BoxGeometry(1.2, 1, 2.2);
+const lavenderHsl = new THREE.Color(palette.lavender.three).getHSL({ h: 0, s: 0, l: 0 });
+
+interface GhostEntry {
+  mesh: THREE.Mesh;
+  label: HTMLDivElement;
+  phase: number;
+}
 
 export class GhostLayer {
   #scene: THREE.Scene;
-  #meshes = new Map<string, THREE.Mesh>();
+  #labelContainer: HTMLElement;
+  #entries = new Map<string, GhostEntry>();
   #seed: string;
   #timer: ReturnType<typeof setTimeout> | undefined;
+  #clock = 0;
 
-  constructor(scene: THREE.Scene, seed: string) {
+  constructor(scene: THREE.Scene, seed: string, labelContainer: HTMLElement) {
     this.#scene = scene;
     this.#seed = seed;
+    this.#labelContainer = labelContainer;
   }
 
   start(): void {
@@ -53,8 +63,14 @@ export class GhostLayer {
   }
 
   #clear(): void {
-    for (const mesh of this.#meshes.values()) this.#scene.remove(mesh);
-    this.#meshes.clear();
+    for (const entry of this.#entries.values()) this.#removeEntry(entry);
+    this.#entries.clear();
+  }
+
+  #removeEntry(entry: GhostEntry): void {
+    this.#scene.remove(entry.mesh);
+    (entry.mesh.material as THREE.Material).dispose();
+    entry.label.remove();
   }
 
   async #refresh(): Promise<void> {
@@ -75,20 +91,68 @@ export class GhostLayer {
     const seen = new Set<string>();
     for (const ghost of ghosts) {
       seen.add(ghost.username);
-      let mesh = this.#meshes.get(ghost.username);
-      if (!mesh) {
-        mesh = new THREE.Mesh(ghostGeometry, ghostMaterial);
-        this.#meshes.set(ghost.username, mesh);
-        this.#scene.add(mesh);
-      }
+      let entry = this.#entries.get(ghost.username);
+      if (!entry) entry = this.#createEntry(ghost.username);
       const x = centerXAtDistance(this.#seed, ghost.distance) + (ghost.lane ?? 0);
-      mesh.position.set(x, 0.5, -ghost.distance);
+      entry.mesh.position.x = x;
+      entry.mesh.position.z = -ghost.distance;
     }
-    for (const [username, mesh] of this.#meshes) {
+    for (const [username, entry] of this.#entries) {
       if (!seen.has(username)) {
-        this.#scene.remove(mesh);
-        this.#meshes.delete(username);
+        this.#removeEntry(entry);
+        this.#entries.delete(username);
       }
+    }
+  }
+
+  #createEntry(username: string): GhostEntry {
+    const h = hashString(username);
+    // ±0.04 around lavender's own hue — distinct without drifting into a
+    // different named colour.
+    const hueOffset = ((h % 1000) / 1000 - 0.5) * 0.08;
+    const color = new THREE.Color().setHSL(lavenderHsl.h + hueOffset, Math.min(1, lavenderHsl.s + 0.1), lavenderHsl.l);
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 1.1,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(ghostGeometry, material);
+    mesh.position.y = 0.5;
+    this.#scene.add(mesh);
+
+    const label = document.createElement("div");
+    label.className = "ghost-label";
+    label.textContent = username;
+    label.hidden = true;
+    this.#labelContainer.appendChild(label);
+
+    const entry: GhostEntry = { mesh, label, phase: (h % 628) / 100 };
+    this.#entries.set(username, entry);
+    return entry;
+  }
+
+  /** Bobs each ghost gently and projects its name tag onto the HUD. Call once per frame. */
+  update(dt: number, camera: THREE.Camera, viewWidth: number, viewHeight: number): void {
+    this.#clock += dt;
+    const projected = new THREE.Vector3();
+    for (const entry of this.#entries.values()) {
+      entry.mesh.position.y = 0.5 + Math.sin(this.#clock * BOB_SPEED + entry.phase) * BOB_HEIGHT;
+
+      projected.copy(entry.mesh.position);
+      projected.y += 1.3;
+      projected.project(camera);
+      const behind = projected.z > 1;
+      if (behind || projected.x < -1.15 || projected.x > 1.15 || projected.y < -1.15 || projected.y > 1.15) {
+        entry.label.hidden = true;
+        continue;
+      }
+      entry.label.hidden = false;
+      const sx = ((projected.x * 0.5 + 0.5) * viewWidth).toFixed(1);
+      const sy = ((1 - (projected.y * 0.5 + 0.5)) * viewHeight).toFixed(1);
+      entry.label.style.transform = `translate(${sx}px, ${sy}px)`;
     }
   }
 }

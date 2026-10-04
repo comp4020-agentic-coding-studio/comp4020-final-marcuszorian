@@ -1,7 +1,9 @@
 import * as THREE from "three";
-import { createCar, stepCar, worldX } from "./car.ts";
+import { createCar, speedAt, stepCar, worldX } from "./car.ts";
 import type { CarState } from "./car.ts";
-import { DaySelector } from "./days.ts";
+import { CameraRig } from "./camera-rig.ts";
+import { CameraShake, CrashBurst } from "./crash-fx.ts";
+import { archiveAge, DaySelector } from "./days.ts";
 import { GhostLayer } from "./ghosts.ts";
 import { hasAccount, postAccount, postRunEnd } from "./net.ts";
 import { applyPaletteCssVars, palette, roadSurface } from "./palette.ts";
@@ -10,6 +12,7 @@ import { createGrid, updateGrid } from "./grid.ts";
 import { createMountains, updateMountains } from "./mountains.ts";
 import { PostFX } from "./postfx.ts";
 import { createSky, updateSky } from "./sky.ts";
+import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, ROAD_HALF_WIDTH, centerXAtDistance, chunkFor } from "./track.ts";
 import type { Chunk } from "./track.ts";
@@ -31,6 +34,8 @@ const usernameModal = document.getElementById("usernameModal")!;
 const usernameForm = document.getElementById("usernameForm") as HTMLFormElement;
 const usernameInput = document.getElementById("username") as HTMLInputElement;
 const usernameError = document.getElementById("usernameError")!;
+const ghostLabelsEl = document.getElementById("ghostLabels")!;
+const fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
 
 // ---- three.js scene ----
 const scene = new THREE.Scene();
@@ -44,7 +49,6 @@ scene.background = new THREE.Color(palette.void.three);
 scene.fog = new THREE.Fog(palette.orange.three, 30, 140);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
-const BASE_FOV = 70;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 // Clamped below the usual 2x: this runs on a 256MB Fly box serving phones,
 // and the post-processing stack below roughly doubles the per-pixel cost.
@@ -68,6 +72,17 @@ scene.add(mountains);
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const postfx = new PostFX(renderer, scene, camera, { reducedEffects: reducedMotion });
+
+function syncFxToggle(): void {
+  const reduced = !postfx.active;
+  fxToggle.setAttribute("aria-pressed", String(reduced));
+  fxToggle.textContent = reduced ? "effects reduced" : "reduce effects";
+}
+syncFxToggle();
+fxToggle.addEventListener("click", () => {
+  postfx.setActive(!postfx.active);
+  syncFxToggle();
+});
 
 function resize(): void {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -133,6 +148,12 @@ const carMaterial = new THREE.MeshStandardMaterial({
 const carMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 2.2), carMaterial);
 scene.add(carMesh);
 
+const cameraRig = new CameraRig();
+const speedLines = new SpeedLines();
+scene.add(speedLines.mesh);
+const cameraShake = new CameraShake();
+const activeBursts: CrashBurst[] = [];
+
 // ---- state tied to the currently-selected day ----
 let seed = "";
 let car: CarState = createCar();
@@ -140,7 +161,7 @@ let steer = 0;
 let running = false;
 
 const chunkObjects = new Map<number, THREE.Object3D>();
-const ghostLayer = new GhostLayer(scene, "");
+const ghostLayer = new GhostLayer(scene, "", ghostLabelsEl);
 
 function chunkAt(index: number): THREE.Object3D {
   let obj = chunkObjects.get(index);
@@ -218,6 +239,7 @@ function setSeed(nextSeed: string): void {
   seed = nextSeed;
   ghostLayer.setSeed(seed);
   resetRun();
+  postfx.setArchiveAge(archiveAge(seed));
 
   scene.remove(mountains);
   for (const child of mountains.children) {
@@ -284,11 +306,14 @@ usernameForm.addEventListener("submit", (e) => {
 
 // ---- game loop ----
 let lastTime = performance.now();
+let elapsed = 0;
+speedLines.mesh.visible = !reducedMotion;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
   const dt = Math.min((now - lastTime) / 1000, 0.1);
   lastTime = now;
+  elapsed += dt;
 
   if (running && usernameModal.hidden) {
     steer = (keys.has("ArrowRight") || keys.has("d") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("a") ? 1 : 0);
@@ -311,6 +336,12 @@ function frame(now: number): void {
       running = false;
       crashedEl.hidden = false;
       crashedTextEl.textContent = `crashed at ${Math.floor(car.distance)} m`;
+
+      const burst = new CrashBurst(new THREE.Vector3(worldX(seed, car), 0.6, -car.distance));
+      scene.add(burst.points);
+      activeBursts.push(burst);
+      if (!reducedMotion) cameraShake.add(0.9);
+
       if (hasAccount()) {
         postRunEnd(car.distance, car.offset, seed)
           .then((result) => {
@@ -325,14 +356,35 @@ function frame(now: number): void {
 
   const x = worldX(seed, car);
   const z = -car.distance;
+  const speed = speedAt(car.distance);
   carMesh.position.set(x, 0.5, z);
-  camera.position.set(x, 4.5, z + 7);
-  camera.lookAt(x, 0.5, z - 10);
+  cameraRig.updateCarBank(carMesh, running ? steer : 0, dt);
+  cameraRig.updateCamera(
+    camera,
+    dt,
+    new THREE.Vector3(x, 4.5, z + 7),
+    new THREE.Vector3(x, 0.5, z - 10),
+    speed,
+  );
+  if (!reducedMotion) camera.position.add(cameraShake.update(dt, elapsed));
 
   updateSky(sky, camera);
   updateSun(sun, camera);
   updateGrid(grid, camera);
   updateMountains(mountains, camera);
+  ghostLayer.update(dt, camera, window.innerWidth, window.innerHeight);
+
+  if (speedLines.mesh.visible) {
+    const speedFactor = Math.max(0, Math.min(1.5, (speed - 9) / 30));
+    speedLines.update(dt, speedFactor, camera.position);
+  }
+
+  for (let i = activeBursts.length - 1; i >= 0; i--) {
+    if (!activeBursts[i]!.update(dt)) {
+      scene.remove(activeBursts[i]!.points);
+      activeBursts.splice(i, 1);
+    }
+  }
 
   postfx.render(dt);
 }

@@ -21,17 +21,16 @@ import { FilmShader } from "three/addons/shaders/FilmShader.js";
 import { HueSaturationShader } from "three/addons/shaders/HueSaturationShader.js";
 
 export interface PostFXOptions {
-  /** Low-spec / prefers-reduced-motion fallback: skip bloom and ageing entirely. */
+  /** Low-spec / prefers-reduced-motion fallback: render plain, no bloom. */
   reducedEffects: boolean;
 }
 
 export class PostFX {
-  readonly enabled: boolean;
-  #composer: EffectComposer | null = null;
-  #bloom: UnrealBloomPass | null = null;
-  #rgbShift: InstanceType<typeof ShaderPass> | null = null;
-  #film: InstanceType<typeof ShaderPass> | null = null;
-  #hueSat: InstanceType<typeof ShaderPass> | null = null;
+  #active: boolean;
+  #composer: EffectComposer;
+  #rgbShift: InstanceType<typeof ShaderPass>;
+  #film: InstanceType<typeof ShaderPass>;
+  #hueSat: InstanceType<typeof ShaderPass>;
   #renderer: THREE.WebGLRenderer;
   #scene: THREE.Scene;
   #camera: THREE.Camera;
@@ -41,17 +40,14 @@ export class PostFX {
     this.#renderer = renderer;
     this.#scene = scene;
     this.#camera = camera;
-    this.enabled = !options.reducedEffects;
-    if (!this.enabled) return;
+    this.#active = !options.reducedEffects;
 
     const size = new THREE.Vector2();
     renderer.getSize(size);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-
-    const bloom = new UnrealBloomPass(size, 0.5, 0.4, 0.9);
-    composer.addPass(bloom);
+    composer.addPass(new UnrealBloomPass(size, 0.5, 0.4, 0.9));
 
     const hueSat = new ShaderPass(HueSaturationShader);
     hueSat.uniforms.saturation!.value = 0;
@@ -69,14 +65,22 @@ export class PostFX {
     composer.addPass(new OutputPass());
 
     this.#composer = composer;
-    this.#bloom = bloom;
     this.#hueSat = hueSat;
     this.#rgbShift = rgbShift;
     this.#film = film;
   }
 
+  get active(): boolean {
+    return this.#active;
+  }
+
+  /** The "reduce effects" toggle (plan.md Phase 4, low-spec fallback) — skips the whole composer at render time. */
+  setActive(active: boolean): void {
+    this.#active = active;
+  }
+
   resize(width: number, height: number): void {
-    this.#composer?.setSize(width, height);
+    this.#composer.setSize(width, height);
   }
 
   /**
@@ -87,18 +91,18 @@ export class PostFX {
    */
   setArchiveAge(age: number): void {
     const a = Math.max(0, Math.min(1, age));
-    if (this.#rgbShift) this.#rgbShift.uniforms.amount!.value = a * 0.0035;
-    if (this.#film) this.#film.uniforms.intensity!.value = a * 0.35;
-    if (this.#hueSat) this.#hueSat.uniforms.saturation!.value = -a * 0.25;
+    this.#rgbShift.uniforms.amount!.value = a * 0.0035;
+    this.#film.uniforms.intensity!.value = a * 0.35;
+    this.#hueSat.uniforms.saturation!.value = -a * 0.25;
   }
 
   render(dt: number): void {
-    if (!this.#composer) {
+    if (!this.#active) {
       this.#renderer.render(this.#scene, this.#camera);
       return;
     }
     this.#clock += dt;
-    if (this.#film) this.#film.uniforms.time!.value = this.#clock;
+    this.#film.uniforms.time!.value = this.#clock;
     this.#composer.render(dt);
   }
 }

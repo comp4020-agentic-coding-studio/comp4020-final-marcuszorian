@@ -10,6 +10,23 @@ export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// How many whole days back `seed` is from today's UTC date. Negative/zero
+// for today. Used only to drive how degraded the scene looks (see
+// archiveAge below) — never to decide anything about what's playable.
+function daysAgo(seed: string): number {
+  const ms = Date.parse(`${todayUtc()}T00:00:00Z`) - Date.parse(`${seed}T00:00:00Z`);
+  return Math.round(ms / MS_PER_DAY);
+}
+
+// 0 for today, climbing to 1 by a month back. This is the one place the
+// vaporwave aesthetic and the archive mechanic are the same idea (see
+// plan.md, "Age the archive"): older days don't just look different, they
+// look like a worn tape of themselves — postfx.ts's setArchiveAge() turns
+// this into chromatic aberration, grain and desaturation.
+export function archiveAge(seed: string): number {
+  return Math.max(0, Math.min(1, daysAgo(seed) / 30));
+}
+
 function shiftDay(seed: string, delta: number): string {
   const d = new Date(`${seed}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);

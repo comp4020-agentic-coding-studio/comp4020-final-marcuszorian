@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>drift archive</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a0c10;
+        color: #e8ecf1;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      #hud > * {
+        pointer-events: auto;
+      }
+      #score {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        font-size: 28px;
+        font-variant-numeric: tabular-nums;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+      }
+      #day {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 14px;
+      }
+      #day button {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: inherit;
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      #day button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .modal {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+      }
+      .modal form {
+        background: #161a21;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 260px;
+      }
+      .modal input {
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: #0a0c10;
+        color: inherit;
+        font-size: 16px;
+      }
+      .modal button[type="submit"] {
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: none;
+        background: #4f8cff;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      #crashed {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+      #crashed button {
+        margin-top: 12px;
+        padding: 8px 16px;
+        border-radius: 6px;
+        border: none;
+        background: #4f8cff;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div id="score">0 m</div>
+      <div id="day">
+        <button id="prevDay" aria-label="previous day">&larr;</button>
+        <span id="dayLabel">today</span>
+        <button id="nextDay" aria-label="next day">&rarr;</button>
+      </div>
+      <div id="crashed" hidden>
+        <div id="crashedText"></div>
+        <button id="restart">drive again</button>
+      </div>
+    </div>
+    <div id="usernameModal" class="modal" hidden>
+      <form id="usernameForm">
+        <label for="username">pick a name &mdash; this is who your ghost will be</label>
+        <input id="username" name="username" maxlength="24" required autofocus />
+        <button type="submit">start driving</button>
+        <div id="usernameError" style="color: #ff8080; font-size: 13px"></div>
+      </form>
+    </div>
+    <script type="module" src="/bundle.js"></script>
+  </body>
+</html>

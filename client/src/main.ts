@@ -6,8 +6,11 @@ import { GhostLayer } from "./ghosts.ts";
 import { hasAccount, postAccount, postRunEnd } from "./net.ts";
 import { applyPaletteCssVars, palette, roadSurface } from "./palette.ts";
 import { glslVec3 } from "./gradients.ts";
+import { createGrid, updateGrid } from "./grid.ts";
+import { createMountains, updateMountains } from "./mountains.ts";
 import { PostFX } from "./postfx.ts";
 import { createSky, updateSky } from "./sky.ts";
+import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, ROAD_HALF_WIDTH, centerXAtDistance, chunkFor } from "./track.ts";
 import type { Chunk } from "./track.ts";
 
@@ -55,6 +58,13 @@ document.body.appendChild(renderer.domElement);
 
 const sky = createSky();
 scene.add(sky);
+const sun = createSun();
+scene.add(sun);
+const grid = createGrid();
+scene.add(grid);
+// Reseeded per day in setSeed — each day's archive gets a different skyline.
+let mountains = createMountains("");
+scene.add(mountains);
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const postfx = new PostFX(renderer, scene, camera, { reducedEffects: reducedMotion });
@@ -208,6 +218,15 @@ function setSeed(nextSeed: string): void {
   seed = nextSeed;
   ghostLayer.setSeed(seed);
   resetRun();
+
+  scene.remove(mountains);
+  for (const child of mountains.children) {
+    const mesh = child as THREE.Mesh;
+    (mesh.material as THREE.Material).dispose();
+  }
+  (mountains.children[0] as THREE.Mesh | undefined)?.geometry.dispose();
+  mountains = createMountains(seed);
+  scene.add(mountains);
 }
 
 // ---- day selector ----
@@ -311,6 +330,9 @@ function frame(now: number): void {
   camera.lookAt(x, 0.5, z - 10);
 
   updateSky(sky, camera);
+  updateSun(sun, camera);
+  updateGrid(grid, camera);
+  updateMountains(mountains, camera);
 
   postfx.render(dt);
 }

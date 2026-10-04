@@ -8,8 +8,11 @@ const CURVE_MAX = 1.4;
 
 // A tiny seeded PRNG (mulberry32) and a string hash (FNV-1a) — both small and
 // dependency-free, chosen specifically so an agent writes them in a few
-// obvious lines rather than pulling in a library for it.
-function hashString(s: string): number {
+// obvious lines rather than pulling in a library for it. Exported (unchanged)
+// so the decorative, non-geometry parts of the scene — the seeded wireframe
+// mountains in mountains.ts, ghost name-tag tinting in ghosts.ts — can reuse
+// the same small PRNG instead of each hand-rolling their own.
+export function hashString(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
@@ -18,7 +21,7 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed;
   return () => {
     a |= 0;

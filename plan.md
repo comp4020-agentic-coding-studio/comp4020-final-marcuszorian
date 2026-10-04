@@ -97,9 +97,11 @@ CREATE INDEX idx_best_runs_seed ON best_runs(track_seed);
 - [x] New Dockerfile + `package.json` build scripts
 - [x] `docker build` + local run with throwaway `/data`, `pnpm check` green
       (8/8 tests, ~36MB RSS idle)
-- [ ] Manual `flyctl deploy`, confirm live URL answers; flip repo public;
-      trigger `checks.yml` once — **blocked on the token above, and flipping
-      the repo public is a deliberate, confirmed step, not automatic**
+- [x] Manual `flyctl deploy`, confirm live URL answers — live at
+      https://comp4020-final-marcuszorian.fly.dev/, full account/run-end/ghost
+      round trip verified against the real volume
+- [ ] Flip repo public; trigger `checks.yml` once — **deliberate, confirmed
+      step, not automatic; ask before doing it**
 
 ### Day 1 (Mon) — done early, same session as Day 0
 - [x] `spec/ghosts.test.ts`, `spec/days.test.ts` (started red, now green)

@@ -135,16 +135,39 @@ restartButton.addEventListener("click", () => resetRun());
 if (!hasAccount()) {
   usernameModal.hidden = false;
 }
+const usernameSubmit = usernameForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+let submittingAccount = false;
 usernameForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  // Without this guard, a double-tap (easy to do on mobile, which is where
+  // this first showed up) fires two submits before the first response comes
+  // back: the first registers the name, the second then correctly — but
+  // confusingly — gets "that username is taken" for a name you just took.
+  if (submittingAccount) return;
   const name = usernameInput.value.trim();
   if (!name) return;
+
+  submittingAccount = true;
+  usernameSubmit.disabled = true;
+  usernameError.textContent = "";
+
   postAccount(name)
     .then(() => {
       usernameModal.hidden = true;
     })
     .catch((err: Error) => {
+      // If this browser already has an account (the exact race above, or a
+      // retry after a success that didn't visibly register), there's
+      // nothing wrong to report — just proceed.
+      if (hasAccount()) {
+        usernameModal.hidden = true;
+        return;
+      }
       usernameError.textContent = err.message;
+    })
+    .finally(() => {
+      submittingAccount = false;
+      usernameSubmit.disabled = false;
     });
 });
 

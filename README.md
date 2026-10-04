@@ -42,3 +42,42 @@ you did.
 This is a first version. It's rough, and the plan is for it to change as the
 rest of the project builds on it — see `plan.md` for what's next and
 `doc/adr/` for the decisions behind the stack and the data model.
+
+## Why it looks like this now
+
+The road used to be flat grey, the car a plain green box, the ghosts a flat
+translucent blue — correct, and nothing else. The look it has now (neon,
+dark, a gradient sunset, a grid horizon) isn't decoration bolted onto that;
+it's an argument that the paragraphs above already make, given a visual
+language to match.
+
+A ghost here is a past run, still present, on a road you can still drive —
+someone else's "right here," not yet gone. That's almost exactly what
+vaporwave and its driving-game sibling, synthwave, are *about*: Mark Fisher's
+"hauntology" reads the aesthetic as a refusal to let go of a future (or in
+this case, a run) that didn't quite arrive, expressed through deliberately
+worn, degraded media rather than a clean record of it. See [CCCB Lab,
+"Vaporwave: The Musical Wallpaper of Lost
+Futures"](https://lab.cccb.org/en/vaporwave-the-musical-wallpaper-of-lost-futures/).
+So older days in this archive don't just carry different ghosts now — they
+render visibly more worn (more chromatic aberration, more grain, less
+saturation) than today does. A day you're revisiting weeks later is supposed
+to feel like finding an old tape, not like loading a save file.
+
+The style itself splits into a lighter, pastel half (vaporwave proper) and a
+darker, saturated half (synthwave/outrun — literally named after a 1986
+racing game). This game leans heavily on the second: a dark base keeps the
+score and controls legible at speed, and saturated neon against black gives
+motion and depth for free in a way that pastel washes don't. The pastel half
+still shows up exactly once, deliberately: the ghosts are lavender, not the
+player's magenta or the road's cyan — the one colour in the scene that's
+"the other genre," because the ghosts are the one thing here that isn't
+about going fast.
+
+What didn't change: there's still no leaderboard, and there still won't be
+one. A high-score table is exactly the kind of thing this aesthetic's
+reference material is full of, and it's exactly what the "good means" section
+above rules out on purpose — a ghost is something you drive past, not a rank
+you check. The ADR for this (`doc/adr/0003-visual-direction.md`) and the
+build plan (`plan.md`) have the rest: the full palette, what it's built from,
+and what was tried and ruled out.

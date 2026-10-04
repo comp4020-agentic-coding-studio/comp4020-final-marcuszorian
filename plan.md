@@ -43,9 +43,9 @@ scope** below for what's deliberately deferred.
 
 ## Decisions
 
-- [ ] `doc/adr/0001-stack.md` — Node/Express/better-sqlite3/Three.js, citing
+- [x] `doc/adr/0001-stack.md` — Node/Express/better-sqlite3/Three.js, citing
       Astro/LiveView/Django+Channels as ruled out and why.
-- [ ] `doc/adr/0002-daily-seeded-archive.md` — per-day best runs as a
+- [x] `doc/adr/0002-daily-seeded-archive.md` — per-day best runs as a
       first-class, replayable unit, not a single rolling best-ever score.
 
 ## Schema (settled, see ADR 0002)
@@ -86,34 +86,46 @@ CREATE INDEX idx_best_runs_seed ON best_runs(track_seed);
 - [x] Plan approved, committed as this file.
 - [ ] Paste `FLY_API_TOKEN` into `mise.local.toml` (from the course Ed
       message) — needed for manual `flyctl deploy` while the repo is private.
-      (CI's own `FLY_API_TOKEN` secret already exists — confirmed via
-      `gh secret list`.)
-- [ ] `doc/adr/0001-stack.md`, `doc/adr/0002-daily-seeded-archive.md`
-- [ ] Minimal Express replacement: `/` → 200, `/readme/` → rendered
-      `README.md`. No DB, no game yet.
-- [ ] `db.ts` / `migrate.ts` / `migrations/0001_init.sql`
-- [ ] New Dockerfile + `package.json` build scripts
-- [ ] `docker build` + local run with throwaway `/data`, `pnpm check` green
+      **Your action, not mine** — I don't have and shouldn't request the raw
+      token in chat. (CI's own `FLY_API_TOKEN` secret already exists —
+      confirmed via `gh secret list`.)
+- [x] `doc/adr/0001-stack.md`, `doc/adr/0002-daily-seeded-archive.md`
+- [x] Minimal Express replacement: `/` → 200, `/readme/` → rendered
+      `README.md`. (Built straight through to the full API, not just the
+      minimal version — see below.)
+- [x] `db.ts` / `migrate.ts` / `migrations/0001_init.sql`
+- [x] New Dockerfile + `package.json` build scripts
+- [x] `docker build` + local run with throwaway `/data`, `pnpm check` green
+      (8/8 tests, ~36MB RSS idle)
 - [ ] Manual `flyctl deploy`, confirm live URL answers; flip repo public;
-      trigger `checks.yml` once
+      trigger `checks.yml` once — **blocked on the token above, and flipping
+      the repo public is a deliberate, confirmed step, not automatic**
 
-### Day 1 (Mon)
-- [ ] `spec/ghosts.test.ts`, `spec/days.test.ts` (red)
-- [ ] `/api/account`, `/api/run-end`, `/api/ghosts`, `/api/days`, `auth.ts`,
-      `events.ts`, `seed.ts` — tests green, push
-- [ ] Three.js skeleton: scene/camera/renderer, `track.ts`, `car.ts`, crash →
+### Day 1 (Mon) — done early, same session as Day 0
+- [x] `spec/ghosts.test.ts`, `spec/days.test.ts` (started red, now green)
+- [x] `/api/account`, `/api/run-end`, `/api/ghosts`, `/api/days`, `auth.ts`,
+      `events.ts`, `seed.ts` — tests green, committed (`7328a8b`)
+- [x] Three.js skeleton: scene/camera/renderer, `track.ts`, `car.ts`, crash →
       `postRunEnd`
-- [ ] Username-prompt → `postAccount`
-- [ ] `ghosts.ts` polling + rendering, scoped to `selectedSeed`
-- [ ] **Checkpoint**: if on schedule, `days.ts` day-selector UI; if not, defer
-      to C9 (API/schema are not deferred, only the client control)
-- [ ] Push, smoke-test live URL by hand
+- [x] Username-prompt → `postAccount`
+- [x] `ghosts.ts` polling + rendering, scoped to `selectedSeed`
+- [x] **Checkpoint reached**: `days.ts` day-selector UI shipped now, not
+      deferred — prev/next arrows, bounded so you can't race a day that
+      hasn't happened and can always step one day past the archive to start
+      a fresh one
+- [ ] Smoke-test by hand in an actual browser (WebGL/game-feel — I can run
+      the server and hit the API, but driving the car is yours to try)
 
 ### Day 2 (Tue morning, before noon)
 - [ ] Fix anything overnight CI surfaced
-- [ ] `README.md` v1 ("what good means" + sources read)
-- [ ] `PROCESS.md` (replace template, cite commits + both ADRs)
-- [ ] `reflections/crit-8.md`
+- [x] `README.md` v1 ("what good means" + sources read) — drafted; yours to
+      edit into your own voice before the cutoff, it's meant to be rough
+- [ ] `PROCESS.md` (replace template, cite commits + both ADRs) — **yours to
+      write**: the spec asks you to account for how you directed, grounded
+      and corrected this work, which only you can actually say. `7328a8b` and
+      `357f8d1` are the commits to cite.
+- [ ] `reflections/crit-8.md` — **yours to write**: both prompts are about
+      your own experience, not something I can answer for you
 - [ ] `pnpm check` + `pnpm check:evidence` green locally
 - [ ] Final push well before noon; confirm CI `check` + `deploy` green;
       update this file with what shipped vs deferred

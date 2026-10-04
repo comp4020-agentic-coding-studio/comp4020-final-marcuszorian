@@ -115,8 +115,14 @@ CREATE INDEX idx_best_runs_seed ON best_runs(track_seed);
       deferred — prev/next arrows, bounded so you can't race a day that
       hasn't happened and can always step one day past the archive to start
       a fresh one
-- [ ] Smoke-test by hand in an actual browser (WebGL/game-feel — I can run
-      the server and hit the API, but driving the car is yours to try)
+- [x] Smoke-tested in an actual browser (playwright-core driving the system
+      Chrome, since chromium-cli wasn't available here) — found and fixed two
+      real bugs that API-only testing had completely missed: the username
+      modal's CSS couldn't actually hide (author `.modal{display:flex}` beat
+      the browser's own `[hidden]{display:none}`), and the road was fully
+      invisible (the strip geometry's front face pointed away from the
+      camera, culled by the default material). Both fixed, verified
+      visually against the live site, redeployed.
 
 ### Day 2 (Tue morning, before noon)
 - [ ] Fix anything overnight CI surfaced

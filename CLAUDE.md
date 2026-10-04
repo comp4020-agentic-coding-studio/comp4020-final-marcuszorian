@@ -8,3 +8,9 @@ where it lives --- `fly.toml`, the `Dockerfile`, the CI workflow and
 `spec/README.md` each say what they fix --- and the course website publishes the
 [final project brief](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/assessments/final-project/).
 What the agent needs to carry from any of it is your call.
+
+## Decisions
+
+Decisions live in `doc/adr/`, one numbered file each. Read them before changing
+the stack, storage or data model. To change one, write a record superseding it
+— an accepted record is never edited.

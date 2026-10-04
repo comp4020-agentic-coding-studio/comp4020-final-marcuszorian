@@ -42,7 +42,11 @@ const sun = new THREE.DirectionalLight(0xffffff, 1);
 sun.position.set(10, 20, 10);
 scene.add(sun);
 
-const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x24262e });
+// DoubleSide: the strip's winding order varies with drift direction per
+// chunk, so a front-face-only material would make the road flicker in and
+// out depending on which way it curves. Simpler and more robust than getting
+// winding exactly right for every drift sign.
+const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3d47, side: THREE.DoubleSide });
 const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0xff5a5a });
 const carMaterial = new THREE.MeshStandardMaterial({ color: 0x5aff9a });
 

@@ -65,6 +65,13 @@
         justify-content: center;
         background: rgba(0, 0, 0, 0.6);
       }
+      /* The browser's own [hidden] { display: none } rule loses to the
+         .modal rule above (author CSS beats the UA stylesheet whenever both
+         set `display`, regardless of selector specificity) — so toggling
+         .hidden in JS silently did nothing without this override. */
+      .modal[hidden] {
+        display: none;
+      }
       .modal form {
         background: #161a21;
         border: 1px solid rgba(255, 255, 255, 0.15);

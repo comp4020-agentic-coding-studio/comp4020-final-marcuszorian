@@ -6,14 +6,22 @@ import * as THREE from "three";
 import { centerXAtDistance } from "./track.ts";
 import { getGhosts } from "./net.ts";
 import type { Ghost } from "./net.ts";
+import { palette } from "./palette.ts";
 
 const POLL_MIN_MS = 60_000;
 const POLL_JITTER_MS = 60_000;
 
+// Lavender, not the player's magenta or the obstacles' red — the one
+// deliberately vaporwave (not synthwave) colour in the scene. Phase 4 gives
+// each ghost its own material instance and a name label; this shared one is
+// the Phase 1 recolour.
 const ghostMaterial = new THREE.MeshStandardMaterial({
-  color: 0x4f8cff,
+  color: palette.lavender.three,
+  emissive: palette.lavender.three,
+  emissiveIntensity: 1.4,
   transparent: true,
-  opacity: 0.35,
+  opacity: 0.4,
+  depthWrite: false,
 });
 const ghostGeometry = new THREE.BoxGeometry(1.2, 1, 2.2);
 

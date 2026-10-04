@@ -4,8 +4,17 @@ import type { CarState } from "./car.ts";
 import { DaySelector } from "./days.ts";
 import { GhostLayer } from "./ghosts.ts";
 import { hasAccount, postAccount, postRunEnd } from "./net.ts";
+import { applyPaletteCssVars, palette, roadSurface } from "./palette.ts";
+import { glslVec3 } from "./gradients.ts";
+import { PostFX } from "./postfx.ts";
+import { createSky, updateSky } from "./sky.ts";
 import { CHUNK_LENGTH, ROAD_HALF_WIDTH, centerXAtDistance, chunkFor } from "./track.ts";
 import type { Chunk } from "./track.ts";
+
+// The 3D scene and the HUD read the same sixteen colour tokens — see
+// palette.ts and plan.md. Written before anything else so there's no frame
+// where the HUD shows its CSS fallback instead of the real palette.
+applyPaletteCssVars();
 
 const LOOKAHEAD_CHUNKS = 10;
 const BEHIND_CHUNKS = 1;
@@ -22,33 +31,94 @@ const usernameError = document.getElementById("usernameError")!;
 
 // ---- three.js scene ----
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0c10);
-scene.fog = new THREE.Fog(0x0a0c10, 30, 140);
+// The gradient sky (below) is what's actually visible; this is just the
+// fallback for the instant before it's added and for anything the dome
+// doesn't cover.
+scene.background = new THREE.Color(palette.void.three);
+// Fog colour must equal the sky gradient's *horizon* stop, not its zenith —
+// otherwise geometry dissolves into a visibly different colour than the sky
+// it's fading into. See gradients.ts's skyGradientStops (the 100% stop).
+scene.fog = new THREE.Fog(palette.orange.three, 30, 140);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
+const BASE_FOV = 70;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Clamped below the usual 2x: this runs on a 256MB Fly box serving phones,
+// and the post-processing stack below roughly doubles the per-pixel cost.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// ACES, not the default (or Reinhard): Reinhard desaturates magenta toward
+// grey-pink, which is the most common way this aesthetic gets ruined.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
-window.addEventListener("resize", () => {
+const sky = createSky();
+scene.add(sky);
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const postfx = new PostFX(renderer, scene, camera, { reducedEffects: reducedMotion });
+
+function resize(): void {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  postfx.resize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener("resize", resize);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const sun = new THREE.DirectionalLight(0xffffff, 1);
-sun.position.set(10, 20, 10);
-scene.add(sun);
+// A cool, dim ambient plus a cooler rim light — the old flat-white pair
+// washed every emissive colour toward grey. Lighting and materials are free
+// to change (plan.md constraint #1); track geometry is not.
+scene.add(new THREE.AmbientLight(0x3a2a5e, 0.5));
+const rim = new THREE.DirectionalLight(0xaab4ff, 0.6);
+rim.position.set(10, 20, 10);
+scene.add(rim);
 
 // DoubleSide: the strip's winding order varies with drift direction per
 // chunk, so a front-face-only material would make the road flicker in and
 // out depending on which way it curves. Simpler and more robust than getting
 // winding exactly right for every drift sign.
-const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3d47, side: THREE.DoubleSide });
-const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0xff5a5a });
-const carMaterial = new THREE.MeshStandardMaterial({ color: 0x5aff9a });
+const roadMaterial = new THREE.MeshStandardMaterial({ color: roadSurface.three, side: THREE.DoubleSide });
+// Forces three's standard UV varyings to exist even though this material has
+// no texture map — onBeforeCompile below reads vUv to paint edge lines and
+// centre dashes directly onto the road surface. See plan.md Phase 2 ("Road
+// treatment") and doc/adr/0003-visual-direction.md.
+roadMaterial.defines = { USE_UV: "" };
+roadMaterial.onBeforeCompile = (shader) => {
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <opaque_fragment>",
+    /* glsl */ `
+    {
+      // vUv.x: 0 at the road's left edge, 1 at its right edge (see the uv
+      // attribute added in chunkAt). vUv.y: 0..1 along each 20m chunk.
+      float edgeDist = abs(vUv.x - 0.5) * 2.0;
+      float edge = smoothstep(0.84, 0.97, edgeDist);
+      float centreMask = smoothstep(0.09, 0.0, edgeDist);
+      float dash = step(0.5, fract(vUv.y * 6.0)) * centreMask;
+      vec3 neon = ${glslVec3(palette.cyan.hex)} * 1.5;
+      // Added to outgoingLight (pre-tonemap, linear HDR) rather than to
+      // gl_FragColor directly: at this point in the standard fragment chunk
+      // chain, tonemapping hasn't run yet, so this can genuinely push over
+      // 1.0 and bloom like a real emissive, instead of just brightening an
+      // already-clamped pixel.
+      outgoingLight += neon * (edge + dash * 0.8);
+    }
+    #include <opaque_fragment>
+    `,
+  );
+};
+const obstacleGeometry = new THREE.BoxGeometry(1.2, 1, 1.2);
+const obstacleMaterial = new THREE.MeshStandardMaterial({
+  color: 0x1a0509,
+  emissive: palette.red.three,
+  emissiveIntensity: 0.85,
+});
+const carMaterial = new THREE.MeshStandardMaterial({
+  color: 0x1a0510,
+  emissive: palette.magenta.three,
+  emissiveIntensity: 0.9,
+});
 
 const carMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 2.2), carMaterial);
 scene.add(carMesh);
@@ -85,10 +155,20 @@ function chunkAt(index: number): THREE.Object3D {
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setIndex([0, 2, 1, 1, 2, 3]);
   geometry.computeVertexNormals();
+  // u: 0 at the road's left edge, 1 at its right edge. v: 0..1 along this
+  // chunk. Adding UVs doesn't move a single vertex, so ADR 0002's seeded
+  // geometry contract holds — this only feeds roadMaterial's onBeforeCompile
+  // edge/dash overlay above.
+  const uvs = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   obj.add(new THREE.Mesh(geometry, roadMaterial));
+  // Tagged so pruneChunks/resetRun can dispose exactly this geometry — it's
+  // the only part of a chunk that isn't shared across chunks (obstacles all
+  // reuse one global geometry+material, same as the player car).
+  obj.userData.roadGeometry = geometry;
 
   for (const obstacle of chunk.obstacles) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 1.2), obstacleMaterial);
+    const mesh = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
     mesh.position.set(obstacle.x, 0.5, obstacle.z);
     obj.add(mesh);
   }
@@ -98,17 +178,25 @@ function chunkAt(index: number): THREE.Object3D {
   return obj;
 }
 
+function disposeChunk(obj: THREE.Object3D): void {
+  (obj.userData.roadGeometry as THREE.BufferGeometry | undefined)?.dispose();
+}
+
 function pruneChunks(currentIndex: number): void {
   for (const [index, obj] of chunkObjects) {
     if (index < currentIndex - BEHIND_CHUNKS || index > currentIndex + LOOKAHEAD_CHUNKS) {
       scene.remove(obj);
+      disposeChunk(obj);
       chunkObjects.delete(index);
     }
   }
 }
 
 function resetRun(): void {
-  for (const obj of chunkObjects.values()) scene.remove(obj);
+  for (const obj of chunkObjects.values()) {
+    scene.remove(obj);
+    disposeChunk(obj);
+  }
   chunkObjects.clear();
   car = createCar();
   running = true;
@@ -222,7 +310,9 @@ function frame(now: number): void {
   camera.position.set(x, 4.5, z + 7);
   camera.lookAt(x, 0.5, z - 10);
 
-  renderer.render(scene, camera);
+  updateSky(sky, camera);
+
+  postfx.render(dt);
 }
 
 requestAnimationFrame(frame);

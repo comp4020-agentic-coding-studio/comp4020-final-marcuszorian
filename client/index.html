@@ -3,20 +3,50 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>drift archive</title>
     <style>
+      /*
+       * Neon/vaporwave HUD — see plan.md and doc/adr/0003-visual-direction.md.
+       * These custom properties are the CSS half of the single colour source
+       * in client/src/palette.ts; main.ts calls applyPaletteCssVars() at
+       * startup and overwrites every one of them from that file. The literal
+       * values below exist only so there's no flash of unstyled colour in the
+       * instant before that module script runs — keep them identical to
+       * palette.ts or that guarantee breaks.
+       */
+      :root {
+        --void: #0d0221;
+        --surface: #241b2f;
+        --raised: #262335;
+        --magenta: #ff2a6d;
+        --pink: #ff7edb;
+        --cyan: #05d9e8;
+        --laserCyan: #36f9f6;
+        --purple: #7b2fbe;
+        --violet: #8c52ff;
+        --lavender: #b967ff;
+        --orange: #ff8b39;
+        --gold: #fede5d;
+        --red: #fe4450;
+        --mint: #72f1b8;
+        --hotWhite: #fff5f6;
+        --lilac: #848bbd;
+      }
+
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #0a0c10;
-        color: #e8ecf1;
+        background: var(--void);
+        color: var(--hotWhite);
         font-family: system-ui, sans-serif;
         overflow: hidden;
       }
       canvas {
         display: block;
       }
+
       #hud {
         position: fixed;
         inset: 0;
@@ -27,14 +57,151 @@
       #hud > * {
         pointer-events: auto;
       }
+
+      /* ---- non-interactive overlays: scanlines + vignette ----
+         Both live inside #hud (not as separate fixed elements) so they pick
+         up its pointer-events:none without needing their own rule, and both
+         stay well under any photosensitivity threshold: no element here
+         flashes — "scanlineDrift" is a slow, continuous scroll, not a strobe,
+         and "tubeFlicker" (used sparingly, below) varies opacity gently over
+         several seconds, nowhere near WCAG 2.3.1's 3-flashes-per-second
+         ceiling. Both are fully disabled under prefers-reduced-motion. */
+      #scanlines {
+        pointer-events: none !important;
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 0, 0, 0.14) 0px,
+          rgba(0, 0, 0, 0.14) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        background-size: 100% 3px;
+        mix-blend-mode: overlay;
+        opacity: 0.5;
+        animation: scanlineDrift 9s linear infinite;
+        z-index: 1;
+      }
+      #vignette {
+        pointer-events: none !important;
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(ellipse at center, transparent 45%, rgba(13, 2, 33, 0.55) 100%);
+        z-index: 1;
+      }
+      @keyframes scanlineDrift {
+        from {
+          background-position: 0 0;
+        }
+        to {
+          background-position: 0 300px;
+        }
+      }
+      @keyframes tubeFlicker {
+        0%,
+        92%,
+        100% {
+          opacity: 1;
+        }
+        93% {
+          opacity: 0.82;
+        }
+        94% {
+          opacity: 1;
+        }
+        96% {
+          opacity: 0.88;
+        }
+        97% {
+          opacity: 1;
+        }
+      }
+      .flicker {
+        animation: tubeFlicker 7s ease-in-out infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #scanlines {
+          animation: none;
+        }
+        .flicker {
+          animation: none !important;
+        }
+      }
+
+      /* ---- the archive's wordmark — decorative, so it's aria-hidden and
+         never carries information the score/day controls don't already ----
+         Chrome text via a hard-stopped gradient (the 49/50/51% triple is
+         what makes it read as reflective metal rather than a plain
+         gradient — soften it and the illusion collapses). Title-only: never
+         use this technique for the score, since parts of a chrome glyph sit
+         around 1.5–2:1 contrast against the void. */
+      #logo {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 24px;
+        font-weight: 900;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        padding-left: 0.3em; /* optical balance for the trailing letter-spacing */
+        background: linear-gradient(
+          180deg,
+          #ffffff 0%,
+          var(--hotWhite) 18%,
+          #8aa0c8 38%,
+          #2b3a66 49%,
+          #0a1a3f 50%,
+          var(--orange) 51%,
+          var(--gold) 62%,
+          #e8f0ff 78%,
+          #ffffff 100%
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: var(--hotWhite); /* fallback if background-clip: text isn't supported */
+        -webkit-text-fill-color: transparent;
+        -webkit-text-stroke: 0.5px rgba(8, 2, 20, 0.5);
+        text-shadow: none;
+        /* A small multi-band gradient reads as noise unless it's pulled out
+           from a busy background first — the dark drop-shadow does that
+           separation, the coloured ones are the actual neon glow. */
+        filter: drop-shadow(0 1px 1px rgba(5, 1, 20, 0.9)) drop-shadow(0 0 10px rgba(255, 42, 109, 0.55))
+          drop-shadow(0 0 20px rgba(5, 217, 232, 0.3));
+        user-select: none;
+      }
+      /* Purely decorative (aria-hidden, and the page <title> already carries
+         the name) — at phone widths it has nowhere to go without colliding
+         with the score or the day control, so it's the thing that gives up
+         the space, not either of those two. */
+      @media (max-width: 480px) {
+        #logo {
+          display: none;
+        }
+      }
+
+      /* ---- the score: the HUD's one piece of load-bearing information, so
+         it gets the brightest, highest-contrast treatment (gold fill,
+         18.8:1-equivalent hotWhite core) rather than the flashiest one ----
+         Layered text-shadow: a tight near-black contact shadow keeps the
+         glyph edge crisp, then a mid halo in the hue, then a wide dim one —
+         three tiers, not one big blur, or it reads as a smudge. */
       #score {
         position: absolute;
         top: 16px;
         left: 16px;
-        font-size: 28px;
+        font-size: 30px;
+        font-weight: 800;
         font-variant-numeric: tabular-nums;
-        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+        color: var(--gold);
+        text-shadow:
+          0 0 2px rgba(10, 5, 0, 0.9),
+          0 0 6px var(--gold),
+          0 0 14px rgba(254, 222, 93, 0.6),
+          0 0 28px rgba(254, 222, 93, 0.25);
       }
+
       #day {
         position: absolute;
         top: 16px;
@@ -42,101 +209,206 @@
         display: flex;
         gap: 8px;
         align-items: center;
-        font-size: 14px;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--surface) 70%, transparent);
+        border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
+        border-radius: 999px;
+        padding: 6px 8px;
+        backdrop-filter: blur(6px);
+      }
+      #dayLabel {
+        color: var(--pink);
+        min-width: 4.5em;
+        text-align: center;
       }
       #day button {
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        color: inherit;
-        border-radius: 6px;
-        padding: 4px 10px;
+        background: transparent;
+        border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
+        color: var(--cyan);
+        border-radius: 999px;
+        width: 26px;
+        height: 26px;
+        line-height: 1;
         cursor: pointer;
         font-size: 14px;
+        transition:
+          box-shadow 0.15s ease,
+          color 0.15s ease;
+      }
+      #day button:not(:disabled):hover {
+        color: var(--hotWhite);
+        box-shadow: 0 0 10px var(--cyan);
       }
       #day button:disabled {
-        opacity: 0.35;
+        opacity: 0.3;
         cursor: default;
       }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--laserCyan);
+        outline-offset: 2px;
+      }
+
+      /* ---- ghost name tags — see ghosts.ts; projected into screen space
+         every frame, so position is set via `transform`, never layout ---- */
+      #ghostLabels {
+        position: absolute;
+        inset: 0;
+      }
+      .ghost-label {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform: translate(-50%, -100%);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--pink); /* lavender text fails small-text contrast; pink is the same family at 8.8:1 */
+        text-shadow:
+          0 0 2px rgba(10, 0, 20, 0.9),
+          0 0 6px var(--lavender),
+          0 0 16px rgba(185, 103, 255, 0.5);
+        white-space: nowrap;
+      }
+
+      .panel {
+        background: color-mix(in srgb, var(--raised) 88%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 45%, transparent);
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        box-shadow:
+          0 0 0 1px rgba(0, 0, 0, 0.4) inset,
+          0 0 40px rgba(123, 47, 190, 0.25);
+      }
+
       .modal {
         position: fixed;
         inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(5, 1, 14, 0.7);
       }
       /* The browser's own [hidden] { display: none } rule loses to the
          .modal rule above (author CSS beats the UA stylesheet whenever both
          set `display`, regardless of selector specificity) — so toggling
-         .hidden in JS silently did nothing without this override. */
+         .hidden in JS silently did nothing without this override. Found by
+         actually rendering the page; see plan.md / PROCESS.md. */
       .modal[hidden] {
         display: none;
       }
       .modal form {
-        background: #161a21;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 10px;
-        padding: 24px;
+        padding: 26px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 14px;
         min-width: 260px;
+        max-width: calc(100vw - 32px);
+        box-sizing: border-box;
+      }
+      .modal form label {
+        color: var(--lilac);
+        font-size: 14px;
       }
       .modal input {
-        padding: 8px 10px;
-        border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.25);
-        background: #0a0c10;
-        color: inherit;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--cyan) 40%, transparent);
+        background: var(--void);
+        color: var(--hotWhite);
         font-size: 16px;
+      }
+      .modal input:focus-visible {
+        outline: 2px solid var(--laserCyan);
+        outline-offset: 1px;
       }
       .modal button[type="submit"] {
-        padding: 8px 10px;
-        border-radius: 6px;
+        padding: 10px 14px;
+        border-radius: 8px;
         border: none;
-        background: #4f8cff;
-        color: white;
+        background: linear-gradient(135deg, var(--magenta), var(--violet));
+        color: var(--hotWhite);
         font-size: 16px;
+        font-weight: 700;
         cursor: pointer;
+        box-shadow: 0 0 18px rgba(255, 42, 109, 0.45);
+        transition: box-shadow 0.15s ease;
       }
+      .modal button[type="submit"]:hover {
+        box-shadow: 0 0 28px rgba(255, 42, 109, 0.65);
+      }
+      .modal button[type="submit"]:disabled {
+        opacity: 0.5;
+        cursor: default;
+        box-shadow: none;
+      }
+      #usernameError {
+        color: var(--red);
+        font-size: 13px;
+        min-height: 1em;
+      }
+
       #crashed {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
         text-align: center;
+        padding: 28px 32px;
+      }
+      #crashedText {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--red);
+        text-shadow:
+          0 0 2px rgba(10, 0, 0, 0.9),
+          0 0 8px var(--red),
+          0 0 20px rgba(254, 68, 80, 0.5);
       }
       #crashed button {
-        margin-top: 12px;
-        padding: 8px 16px;
-        border-radius: 6px;
-        border: none;
-        background: #4f8cff;
-        color: white;
+        margin-top: 16px;
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
+        background: color-mix(in srgb, var(--cyan) 12%, transparent);
+        color: var(--laserCyan);
         font-size: 16px;
+        font-weight: 600;
         cursor: pointer;
+        box-shadow: 0 0 16px rgba(5, 217, 232, 0.35);
+        transition: box-shadow 0.15s ease;
+      }
+      #crashed button:hover {
+        box-shadow: 0 0 26px rgba(5, 217, 232, 0.55);
       }
     </style>
   </head>
   <body>
     <div id="hud">
+      <div id="scanlines"></div>
+      <div id="vignette"></div>
+      <div id="logo" class="flicker" aria-hidden="true">drift archive</div>
       <div id="score">0 m</div>
       <div id="day">
         <button id="prevDay" aria-label="previous day">&larr;</button>
         <span id="dayLabel">today</span>
         <button id="nextDay" aria-label="next day">&rarr;</button>
       </div>
-      <div id="crashed" hidden>
+      <div id="ghostLabels"></div>
+      <div id="crashed" class="panel" hidden>
         <div id="crashedText"></div>
         <button id="restart">drive again</button>
       </div>
     </div>
     <div id="usernameModal" class="modal" hidden>
-      <form id="usernameForm">
+      <form id="usernameForm" class="panel">
         <label for="username">pick a name &mdash; this is who your ghost will be</label>
         <input id="username" name="username" maxlength="24" required autofocus />
         <button type="submit">start driving</button>
-        <div id="usernameError" style="color: #ff8080; font-size: 13px"></div>
+        <div id="usernameError"></div>
       </form>
     </div>
     <script type="module" src="/bundle.js"></script>

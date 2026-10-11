@@ -182,17 +182,25 @@ function playlistFor(seed: string): Row[] {
 const START_DISTANCE = 70;
 const GATE_INTERVAL_START = 0.85; // seconds between gates at the start of a run
 const GATE_INTERVAL_MIN = 0.36; // the reaction-window floor it tightens toward
-const GATE_INTERVAL_FALLOFF = 900; // metres over which it closes most of that gap
 
 /**
  * Metres to the next gate. Spacing is `speed × interval`: speed rises and the
  * interval tightens, so gates get closer in TIME but further apart in SPACE —
  * which is what keeps a fair reaction window at the top of the ramp.
+ *
+ * `t` tracks `speedAt`'s own progress toward MAX_SPEED (0 at BASE_SPEED, 1 at
+ * the cap) rather than a separate distance falloff of its own: two
+ * independently-tuned ramps drifted apart the last time MAX_SPEED moved, with
+ * the interval maxing out a third of the way into the speed ramp and
+ * difficulty flatlining for the rest of a long run even as the car kept
+ * getting faster. Deriving `t` from speed means raising the speed ceiling
+ * again keeps the two in step without retuning this function too.
  */
 function gateSpacingAt(distance: number): number {
-  const t = 1 - Math.exp(-distance / GATE_INTERVAL_FALLOFF);
+  const speed = speedAt(distance);
+  const t = (speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED);
   const interval = GATE_INTERVAL_START - (GATE_INTERVAL_START - GATE_INTERVAL_MIN) * t;
-  return speedAt(distance) * interval;
+  return speed * interval;
 }
 
 interface ObstacleRow {

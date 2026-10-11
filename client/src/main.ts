@@ -294,6 +294,7 @@ let account: Account | null = null;
 getAccount()
   .then((found) => {
     account = found;
+    roster.setViewer(found?.username ?? null);
     if (!found) usernameModal.hidden = false;
   })
   .catch(() => {
@@ -320,6 +321,7 @@ usernameForm.addEventListener("submit", (e) => {
   postAccount(name)
     .then((created) => {
       account = created;
+      roster.setViewer(created.username);
       usernameModal.hidden = true;
       // Start them at 0: the loop was running while we asked the server who
       // they were, so without this their first run begins a metre or two in.

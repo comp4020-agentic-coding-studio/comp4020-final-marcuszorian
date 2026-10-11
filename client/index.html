@@ -490,6 +490,29 @@
         font-variant-numeric: tabular-nums;
         flex: none;
       }
+      /* Your own run. Marked wherever it appears — inside the ten or below the
+         gap — so the row means the same thing in both places. */
+      .roster-row.is-you .roster-name,
+      .roster-row.is-you .roster-distance {
+        color: var(--mint);
+      }
+      .roster-you {
+        color: var(--lilac);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-left: 4px;
+      }
+      /* The break between the ten and you. Deliberately not a rank number:
+         "outside the top ten" is the useful part, the exact position is the
+         part doc/adr/0007 and 0008 both refuse. */
+      .roster-gap {
+        color: var(--lilac);
+        opacity: 0.5;
+        text-align: center;
+        letter-spacing: 0.3em;
+        padding: 2px 0;
+      }
 
       /* On a phone it becomes a disclosure near the top instead of a side
          panel, which would otherwise sit over the road. roster.ts drives the

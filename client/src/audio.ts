@@ -196,6 +196,9 @@ export class AudioEngine {
       f.Q.value = 1.2;
     }
     this.#engineBus = ctx.createGain();
+    // Held well under the one-shots: this one runs continuously, so it sets the
+    // floor everything else has to clear rather than competing for the front.
+    this.#engineBus.gain.value = 0.6;
     this.#engineBus.connect(this.#lp1).connect(this.#lp2).connect(this.#aged);
 
     // Pink bed through a 4-stage allpass phaser; LFO rate rises with speed.
@@ -286,7 +289,7 @@ export class AudioEngine {
     const ctx = this.#ctx;
     if (!ctx) return;
     if (driving) this.#nextNote = Math.max(this.#nextNote, ctx.currentTime + 0.05);
-    this.#bedGain.gain.setTargetAtTime(driving ? 0.12 : 0, ctx.currentTime, 0.2);
+    this.#bedGain.gain.setTargetAtTime(driving ? 0.085 : 0, ctx.currentTime, 0.2);
   }
 
   update(_dt: number, speed: number, nearness: number): void {

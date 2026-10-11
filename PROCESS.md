@@ -64,14 +64,57 @@ Across the four implementation phases, I repeatedly redirected the agent and tun
   the four phases (palette/sky/bloom; grid/sun/mountains; HUD/readme theming;
   camera feel/ghosts/crash feel) plus `doc/adr/0003-visual-direction.md`
 
+## The three-lane overhaul
+
+The driving model from C8 — continuous analogue steering on a centerline that drifted a seeded amount per chunk — got worse as the speed ramp did its job. Two tasks competed for the same two keys (correcting against drift, and dodging), difficulty was incoherent because obstacles sat at a random continuous `x`, and nothing in the generator could even state "a way through exists". I directed a pivot to three discrete lanes with single-tap input, recorded in `doc/adr/0004-discrete-three-lane-runner.md`.
+
+Three corrections I made to my own plan during this tranche:
+
+- **The plan named the wrong record to supersede.** `plan.md` said ADR 0004 would supersede ADR 0002. The agent pushed back: ADR 0002 is the *data model* (`best_runs` keyed by `(user_id, track_seed)`), which a lane change leaves entirely intact, and ADR 0003 had already prescribed the correct form — "a future change that *does* need to touch the centerline is a new ADR". I corrected the plan rather than let the ADR trail record a decision that was never made.
+- **Solvability is asserted, not hoped for.** I required `patternIsSolvable` to propagate the reachable lane set row by row under "one shift between rows". Two staircase patterns in the first draft of the catalogue forced a two-lane move between adjacent rows and failed the check; both were replaced. The invariant is the point — a hand-written catalogue without one is just twenty chances to ship an impossible gate.
+- **The speed ramp had no ceiling.** `plan.md` asked for one; the existing `sqrt` curve was unbounded and passed 100 m/s by 11km, which no reaction window makes fair. Capped at 52 m/s, with gate spacing derived from speed so the reaction window holds at a 0.36s floor.
+
+Verification was a headless Chrome harness driven over the DevTools protocol — no new project dependency. It confirmed all 20 patterns solvable and no row blocking three lanes across 8km, every nominally open lane actually clearing every barrier, ten `repeat: true` keydowns correctly ignored, and two single taps clearing the 70m and 83m gates.
+
+- [`7c18e4e`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/7c18e4e) —
+  the overhaul and `doc/adr/0004-discrete-three-lane-runner.md`
+
+## C9: real-time, and the three bugs hiding behind it
+
+The socket itself was nearly free, and deliberately so. ADR 0001 chose Node over Astro a month earlier *specifically* to keep `ws` available, and left `scoreChanged()` as a no-op seam. Cashing it in required no change to `runs.ts` at all — the clearest payoff in this project from deciding before coding.
+
+The decision C9 actually asks for is one level up, and it is `doc/adr/0005-realtime-ghosts.md`: **a run is private while it happens and public the moment it ends, and only if it improved.** I refused live car positions — the obvious crowd-pleaser, and the option my pod should argue for — on `README.md`'s own terms: a ghost means "someone else was right here", past tense. A car moving beside you is an opponent, and this game has no leaderboard on purpose. I chose WebSocket over the simpler SSE for one concrete reason: a client must say *which day* it is watching, and that changes while the page is open, which over SSE is a new `EventSource` per day change.
+
+**What actually consumed the week was verifying it.** Two browser tabs failed to show propagation, and my first diagnosis was wrong: both tabs shared one cookie jar, so they were the same player. Driving two genuinely separate browsers then uncovered three bugs chained behind one another:
+
+- **Auth, pre-existing since C8.** `setAuthCookie` sets `httpOnly`, so `document.cookie` can never hold the token, so `hasAccount()` always returned `false`, so `if (hasAccount()) postRunEnd(...)` never fired. **No crash in a real browser had ever saved a run** — every ghost in the database had been written by the test suite. Fixed by keeping `httpOnly` and adding `GET /api/me`: the browser asks the server who it is instead of guessing.
+- **NaN, unmasked by fixing the above.** `requestAnimationFrame` reports the timestamp of the frame already in flight, which can predate the `lastTime` set when `main.ts` finishes evaluating. The resulting negative `dt` drove distance below zero and `speedAt`'s `sqrt` turned it to `NaN` for the rest of the session. The always-visible username modal had been concealing it by pausing the loop until the clock caught up.
+- **The day selector gated navigation on `/api/days`** — the days with recorded runs — rather than on the calendar. On a fresh database that list is just `[today]`, so "prev" stepped back exactly one day and then greyed out. This contradicted the data model it was built on: a day's track is a pure function of its date, so every date is a real road whether or not anyone has driven it.
+
+All three lived in `client/`, the one layer this project admits was never under test, and the suite stayed green through every one of them — every HTTP spec sends the cookie by hand, and none runs a frame loop. The corrective was not more tests of the same kind but a different *sensor*: a harness driving two real browsers with separate cookie jars. It reproduced in one run what four files of HTTP specs could not reach (A crashed at 68m; B's ghost list gained A with no reload).
+
+I also caught my own test polluting the suite: `spec/realtime.test.ts` posted against `2020-01-01`, the day `spec/ghosts.test.ts` asserts is empty. It passed once on file ordering and failed every rerun against the same database. I now run the suite twice before believing it.
+
+`spec/days-nav.test.ts` is the first test here that imports a client module directly rather than going over HTTP — only possible because the navigation bounds came out of the DOM-bound `#render` into pure `canGoBack`/`canGoForward`. It is a small, deliberate crack in the client test boundary, aimed at exactly the layer that produced all three bugs.
+
+- [`3eb77da`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/3eb77da) —
+  real-time over `ws`, `doc/adr/0005-realtime-ghosts.md`, and the auth and NaN fixes
+- [`ff045e1`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/ff045e1) —
+  day selector bounded by the calendar, plus the first client-module spec
+- [`19bc2df`](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/19bc2df) —
+  `reflections/crit-9.md`
+
 ## What I'd flag to a marker
 
 - **Deliberately deferred**:
-  - Real-time WebSocket broadcasting is deferred to C9. Polling every 60–120s satisfies C8 proof-of-life, and the `scoreChanged()` seam in `src/server/lib/events.ts` stands ready for the socket broadcaster.
+  - ~~Real-time WebSocket broadcasting is deferred to C9.~~ **Done in C9** — the `scoreChanged()` seam was taken up without touching `runs.ts`. Polling survives in `ghosts.ts` as the fallback while the socket is down, so a blocked WebSocket degrades instead of failing.
+  - Presence ("who else is driving right now") was considered and refused in ADR 0005, not merely skipped: the ghost is this app's whole vocabulary for other people, and a counter beside it would say the ghosts weren't enough.
   - Audio (engine rumble, collision sounds, synth soundtrack) is deferred to keep the build scoped; Web Audio can be added later without external packages.
   - Mobile touch controls are omitted. The responsive CSS and viewport scale down to mobile screens cleanly, but driving controls currently expect keyboard input (arrow keys / WASD).
-- **Client test boundary**: The client code in `client/src/` has no automated WebGL unit test suite. As documented in `plan.md`, headless API integration tests in `spec/` verify data invariants, while manual browser smoke-testing and screenshots served as the verification gate for graphics and gameplay.
+- **Client test boundary**: `client/src/` still has no WebGL unit suite, and C9 showed what that costs — all three bugs above lived there, with the spec suite green throughout. Two things changed: `spec/days-nav.test.ts` now tests client logic directly where it is pure, and browser verification moved from eyeballing screenshots to scripted DevTools-protocol harnesses that assert on state (lane solvability, input handling, cross-browser propagation). The honest gap that remains is that those harnesses live outside the repo's `pnpm check`, so they are a tool I run rather than a sensor that runs itself.
 - **Rough edges & agent corrections**:
   - The agent initially culled road chunks and ghosts with `scene.remove()` without calling `.dispose()`. While harmless with primitive shared materials, per-chunk shader materials and per-ghost materials caused memory leaks. I had the agent add explicit `.dispose()` calls for geometry, materials, and ghost label DOM nodes upon removal in Phase 4.
   - Typography relies on system fonts and CSS styling rather than external Google Fonts to eliminate external CDN dependencies and avoid Content Security Policy complications.
+  - **One commit covers four strands** (real-time, the auth fix, the NaN fix, the speed ceiling) because `net.ts` and `main.ts` each span several, and splitting cleanly would have needed interactive staging under deadline. The message separates them; the history does not.
+  - **I overrode a correct objection.** Asked to implement the lane overhaul first, the agent flagged that C9's headline requirement was untouched and that the overhaul moved none of it. I chose the overhaul anyway. It worked out, but the warning was right and I should have weighed it harder than I did.
   - An interactive "Reduce Effects" toggle and `prefers-reduced-motion` queries were added to protect low-spec machines and ensure WCAG compliance (disabling scanlines, flicker, and trauma² camera shake).

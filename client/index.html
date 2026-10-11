@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>drift archive</title>
+    <title>nightly build</title>
     <style>
       /*
        * Neon/vaporwave HUD — see plan.md and doc/adr/0003-visual-direction.md.
@@ -144,42 +144,17 @@
 
       /* ---- the archive's wordmark — decorative, so it's aria-hidden and
          never carries information the score/day controls don't already ----
-         Chrome text via a hard-stopped gradient (the 49/50/51% triple is
-         what makes it read as reflective metal rather than a plain
-         gradient — soften it and the illusion collapses). Title-only: never
-         use this technique for the score, since parts of a chrome glyph sit
-         around 1.5–2:1 contrast against the void. */
+         A pre-rendered neon logo (client/logo.png), already cut out to a
+         transparent background (see the note beside its source), so the only
+         job left here is sizing and the same glow every other neon element
+         gets from a drop-shadow stack. */
       #logo {
         position: absolute;
-        top: 12px;
+        top: 10px;
         left: 50%;
         transform: translateX(-50%);
-        font-size: 24px;
-        font-weight: 900;
-        letter-spacing: 0.3em;
-        text-transform: uppercase;
-        padding-left: 0.3em; /* optical balance for the trailing letter-spacing */
-        background: linear-gradient(
-          180deg,
-          #ffffff 0%,
-          var(--hotWhite) 18%,
-          #8aa0c8 38%,
-          #2b3a66 49%,
-          #0a1a3f 50%,
-          var(--orange) 51%,
-          var(--gold) 62%,
-          #e8f0ff 78%,
-          #ffffff 100%
-        );
-        background-clip: text;
-        -webkit-background-clip: text;
-        color: var(--hotWhite); /* fallback if background-clip: text isn't supported */
-        -webkit-text-fill-color: transparent;
-        -webkit-text-stroke: 0.5px rgba(8, 2, 20, 0.5);
-        text-shadow: none;
-        /* A small multi-band gradient reads as noise unless it's pulled out
-           from a busy background first — the dark drop-shadow does that
-           separation, the coloured ones are the actual neon glow. */
+        height: 64px;
+        width: auto;
         filter: drop-shadow(0 1px 1px rgba(5, 1, 20, 0.9)) drop-shadow(0 0 10px rgba(255, 42, 109, 0.55))
           drop-shadow(0 0 20px rgba(5, 217, 232, 0.3));
         user-select: none;
@@ -579,7 +554,7 @@
     <div id="hud">
       <div id="scanlines"></div>
       <div id="vignette"></div>
-      <div id="logo" class="flicker" aria-hidden="true">drift archive</div>
+      <img id="logo" class="flicker" src="/logo.png" alt="" aria-hidden="true" />
       <div id="score">0 m</div>
       <div id="day">
         <button id="prevDay" aria-label="previous day">&larr;</button>

@@ -23,7 +23,7 @@ readmeRouter.get("/", async (_req, res) => {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>README — drift archive</title>
+    <title>README — nightly build</title>
     <style>
       :root {
         --void: #0d0221;

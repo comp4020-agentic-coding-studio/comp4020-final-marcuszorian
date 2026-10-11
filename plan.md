@@ -1,4 +1,4 @@
-# drift archive: build plan
+# nightly build: build plan
 
 Living task list. Sections 1–5 are the 3-lane arcade runner mechanical overhaul; section 6 is the C9 real-time work. Supersedes the previous visual-direction plan; not a spec (that's the course's), not a decision record (those are in `doc/adr/`).
 

@@ -22,6 +22,7 @@ await build({
 });
 
 copyFileSync("client/index.html", "dist/client/index.html");
+copyFileSync("client/logo.png", "dist/client/logo.png");
 
 // Precompress the bundle so the server can hand the compressed bytes straight
 // to the wire: 591 KiB raw against 129 KiB of brotli is most of a mobile

@@ -1,4 +1,4 @@
-# drift archive
+# nightly build
 
 An endless 3D driving game. Drive until you crash; your crash point becomes
 your best run of the day. Everyone else's best-of-the-day crash points sit on

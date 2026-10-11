@@ -67,11 +67,18 @@ const BASE_SPEED = 9; // m/s
 const SPEED_GROWTH = 0.9; // extra m/s per sqrt(metre travelled) — gentle ramp
 // The ceiling the ramp approaches. The sqrt curve alone is unbounded — it
 // passed 100 m/s around 11km, which no reaction window makes fair — so it
-// clamps here, reached at ((MAX_SPEED - BASE_SPEED) / SPEED_GROWTH)^2 ≈ 1600m.
-const MAX_SPEED = 45;
+// clamps here, reached at ((MAX_SPEED - BASE_SPEED) / SPEED_GROWTH)^2 ≈ 2300m.
+// Raised from 45 after play-testing: the cap arrived early enough that the
+// back half of a long run stopped developing.
+const MAX_SPEED = 52;
 
 export function speedAt(distance: number): number {
-  return Math.min(MAX_SPEED, BASE_SPEED + SPEED_GROWTH * Math.sqrt(distance));
+  // Math.max guards the sqrt: a negative distance returns NaN, and because the
+  // caller feeds the result straight back into distance, one NaN poisons the
+  // whole run. Belt and braces with main.ts's dt clamp — this function is also
+  // called by gateSpacingAt during generation, where a NaN would be far less
+  // obvious than a frozen score.
+  return Math.min(MAX_SPEED, BASE_SPEED + SPEED_GROWTH * Math.sqrt(Math.max(0, distance)));
 }
 
 // ---- gate patterns ----

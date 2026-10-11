@@ -1,8 +1,14 @@
-// The one seam a future real-time feature (C9 — a change reaching every open
-// session in about a second) hooks into. Every write that should eventually
-// broadcast goes through here. Today it's a no-op: ghost sync is polling, on
-// purpose (see doc/adr/0001-stack.md) — this function is what changes, not
-// the callers, when that becomes a `ws` broadcast.
+// The one seam a real-time feature hooks into. Every write that should reach
+// other open sessions goes through here, and ADR 0001 planned it this way:
+// "a single `scoreChanged()` seam in the server where a `ws` broadcast gets
+// added later without touching anything else." That's now cashed in — and
+// note that runs.ts, the only caller, did not change.
+//
+// This is a plain in-process topic, not a broker. ADR 0001 fixes the app at
+// one Fly machine, so every open socket is in this process and an in-memory
+// Set reaches all of them. A second machine would need a shared broker
+// (Redis, Postgres LISTEN/NOTIFY); that is a different decision, for a
+// different deployment.
 export interface ScoreChange {
   userId: number;
   username: string;
@@ -11,6 +17,25 @@ export interface ScoreChange {
   lane: number | null;
 }
 
+type Listener = (change: ScoreChange) => void;
+
+const listeners = new Set<Listener>();
+
+/** Subscribes to score changes. Returns the unsubscribe function. */
+export function onScoreChanged(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function scoreChanged(change: ScoreChange): void {
-  void change; // no-op for now
+  for (const listener of listeners) {
+    try {
+      listener(change);
+    } catch {
+      // One broken subscriber (a socket that died between the readyState
+      // check and the send) must not stop the others getting the change, and
+      // must not fail the HTTP request that triggered it — the run is already
+      // committed by the time we get here.
+    }
+  }
 }

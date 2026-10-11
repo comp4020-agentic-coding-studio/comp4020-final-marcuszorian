@@ -1,6 +1,6 @@
-# drift archive → 3-lane arcade runner: build plan
+# drift archive: build plan
 
-Living task list for the 3-lane arcade runner mechanical overhaul. Supersedes the previous visual-direction plan; not a spec (that's the course's), not a decision record (those are in `doc/adr/`).
+Living task list. Sections 1–5 are the 3-lane arcade runner mechanical overhaul; section 6 is the C9 real-time work. Supersedes the previous visual-direction plan; not a spec (that's the course's), not a decision record (those are in `doc/adr/`).
 
 ---
 
@@ -89,3 +89,27 @@ This overhaul pivots the game from continuous analogue steering with curve drift
 - [x] `pnpm test` passing (8/8 tests).
 - [x] `pnpm check:evidence` passing.
 - [x] Browser smoke test: verify lane responsiveness, collision accuracy, obstacle solvability, speed progression, and ghost rendering.
+
+---
+
+## 6. Real-time ghosts (C9)
+
+A run that ends anywhere reaches every open session watching that day inside a
+second, with no reload. The behavioural decision — a run is private while it
+happens, public once it ends and only if it improved — is
+`doc/adr/0005-realtime-ghosts.md`.
+
+Note on "Zero New Dependencies" (§3 constraint 3): that constraint is about the
+client — no animation or physics library for work a few lines can do. `ws` is a
+server dependency that ADR 0001 named a month ago when it chose Node over Astro
+precisely to keep it available. Adding it is the plan being followed, not
+broken.
+
+- [x] `doc/adr/0005-realtime-ghosts.md`: the decision, the two options refused, what it costs.
+- [x] `events.ts`: turn the `scoreChanged()` no-op into a real in-process topic. `runs.ts` unchanged.
+- [x] `lib/live.ts`: `ws` server at `/live`, per-connection day subscription, heartbeat to reap dead sockets.
+- [x] `index.ts`: explicit `http.Server` so the socket has something to attach to.
+- [x] `net.ts`: `LiveFeed` — one socket, re-subscribe on day change, jittered reconnect backoff.
+- [x] `ghosts.ts`: render from push; polling demoted to the fallback while the socket is down.
+- [x] `spec/realtime.test.ts`: the spec line under test, plus cross-day isolation, backfill, and improvement-only.
+- [x] Verify in two real browsers with separate cookie jars, not two tabs of one.

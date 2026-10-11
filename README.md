@@ -32,12 +32,20 @@ So, for now, good means:
   player finding *their own* ghost from earlier the same day, or from a day
   they'd almost forgotten.
 
-What this doesn't mean yet, on purpose: there's no social layer (no names you
-recognize going in, no following, no messaging), no real-time — a ghost can
-be a few minutes stale and that's fine, because the thing you're reacting to
-is a place, not a live event — and no polish on the driving itself. Proof of
-life, this week, is: the road exists, you can crash on it, and it remembers
-you did.
+What this doesn't mean, on purpose: there's no social layer — no names you
+recognize going in, no following, no messaging.
+
+Ghosts *are* live now: finish a run anywhere and it reaches every open session
+on that day's road within a second, no reload. That reverses the "a ghost can
+be a few minutes stale and that's fine" this section used to say, but not the
+argument under it. The reason that staleness was fine — "the thing you're
+reacting to is a place, not a live event" — is exactly why what goes live is a
+*finished* run and never a car in motion. Your run is yours while you're
+driving it; it becomes a trace the moment you crash, and the trace travels
+immediately. Watching someone else drive in real time would have made this a
+race, which the section above rules out. See
+`doc/adr/0005-realtime-ghosts.md`, which argues that choice against the two
+alternatives and says what it costs.
 
 This is a first version. It's rough, and the plan is for it to change as the
 rest of the project builds on it — see `plan.md` for what's next and

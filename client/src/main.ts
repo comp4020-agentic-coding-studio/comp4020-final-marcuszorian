@@ -5,7 +5,8 @@ import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
 import { archiveAge, DaySelector } from "./days.ts";
 import { GhostLayer } from "./ghosts.ts";
-import { hasAccount, postAccount, postRunEnd } from "./net.ts";
+import { getAccount, postAccount, postRunEnd } from "./net.ts";
+import type { Account } from "./net.ts";
 import { applyPaletteCssVars, palette, roadSurface } from "./palette.ts";
 import { glslVec3 } from "./gradients.ts";
 import { createGrid, updateGrid } from "./grid.ts";
@@ -280,9 +281,21 @@ window.addEventListener("keydown", (e) => {
 restartButton.addEventListener("click", () => resetRun());
 
 // ---- username gate ----
-if (!hasAccount()) {
-  usernameModal.hidden = false;
-}
+// Who we are is the server's answer, not a guess from document.cookie — the
+// token cookie is httpOnly and was never visible here. Until the answer lands
+// the modal stays hidden and the game plays; a returning player sees no flash
+// of a form they already filled in, and a new one gets it a round trip later.
+let account: Account | null = null;
+getAccount()
+  .then((found) => {
+    account = found;
+    if (!found) usernameModal.hidden = false;
+  })
+  .catch(() => {
+    // Couldn't ask (offline, server down). Don't demand a username that may
+    // already be taken by this very player — let them drive. The run post
+    // below is attempted regardless and the server decides whether it counts.
+  });
 const usernameSubmit = usernameForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
 let submittingAccount = false;
 usernameForm.addEventListener("submit", (e) => {
@@ -300,14 +313,18 @@ usernameForm.addEventListener("submit", (e) => {
   usernameError.textContent = "";
 
   postAccount(name)
-    .then(() => {
+    .then((created) => {
+      account = created;
       usernameModal.hidden = true;
+      // Start them at 0: the loop was running while we asked the server who
+      // they were, so without this their first run begins a metre or two in.
+      resetRun();
     })
     .catch((err: Error) => {
       // If this browser already has an account (the exact race above, or a
       // retry after a success that didn't visibly register), there's
       // nothing wrong to report — just proceed.
-      if (hasAccount()) {
+      if (account) {
         usernameModal.hidden = true;
         return;
       }
@@ -326,7 +343,14 @@ speedLines.mesh.visible = !reducedMotion;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
-  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  // Clamped at BOTH ends. The upper clamp is for a backgrounded tab; the lower
+  // one is for the first frame: `lastTime` is set when this module finishes
+  // evaluating, but rAF hands back the timestamp of the frame it is already
+  // rendering, which can PREDATE that. A negative dt drove distance below zero,
+  // and speedAt's sqrt then turned it to NaN for the rest of the session. This
+  // hid behind the username modal (which paused the loop until the clock caught
+  // up) until that modal stopped appearing on every load.
+  const dt = Math.min(Math.max((now - lastTime) / 1000, 0), 0.1);
   lastTime = now;
   elapsed += dt;
 
@@ -358,15 +382,18 @@ function frame(now: number): void {
       activeBursts.push(burst);
       if (!reducedMotion) cameraShake.add(0.9);
 
-      if (hasAccount()) {
-        postRunEnd(car.distance, car.offset, seed)
-          .then((result) => {
-            if (result.improved) void daySelector.load();
-          })
-          .catch(() => {
-            // best-effort — a failed save doesn't block playing again
-          });
-      }
+      // Attempted unconditionally: the server owns the identity, so it is the
+      // thing that decides whether this run counts. A signed-out browser gets
+      // a 401 here and the catch below swallows it, which is exactly what the
+      // old `if (hasAccount())` gate was trying to express — except that gate
+      // was never once true, so no run was ever saved from a real browser.
+      postRunEnd(car.distance, car.offset, seed)
+        .then((result) => {
+          if (result.improved) void daySelector.load();
+        })
+        .catch(() => {
+          // best-effort — a failed save doesn't block playing again
+        });
     }
   }
 

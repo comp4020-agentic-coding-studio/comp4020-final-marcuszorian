@@ -1,9 +1,9 @@
 // Translucent cars at other players' best-of-the-day crash points — the
 // single most important object in the scene (see plan.md: "the ghost is the
-// single most important object on screen"). Synced by polling, not push — a
-// few minutes' staleness is fine for this (see doc/adr/0001-stack.md);
-// `scoreChanged()` server-side is the seam for a future broadcast, not this
-// file.
+// single most important object on screen"). Synced by push: a run that ends
+// anywhere reaches every open session watching that day inside a second, over
+// the socket in net.ts (see doc/adr/0005-realtime-ghosts.md). Polling is still
+// here, but only as the fallback while that socket is down.
 //
 // Each ghost gets its own material (a small hue variance around lavender,
 // seeded from the username) rather than sharing one, so a row of ghosts
@@ -13,12 +13,14 @@
 // something you drive past, not an obstacle.
 import * as THREE from "three";
 import { hashString, laneX, snapToLane } from "./track.ts";
-import { getGhosts } from "./net.ts";
+import { getGhosts, LiveFeed } from "./net.ts";
 import type { Ghost } from "./net.ts";
 import { palette } from "./palette.ts";
 
-const POLL_MIN_MS = 60_000;
-const POLL_JITTER_MS = 60_000;
+// Only used while the live socket is down, so it is tighter than the old
+// steady-state poll — this is a degraded mode, not the normal one.
+const POLL_MIN_MS = 20_000;
+const POLL_JITTER_MS = 20_000;
 const BOB_HEIGHT = 0.08;
 const BOB_SPEED = 1.4;
 
@@ -38,27 +40,48 @@ export class GhostLayer {
   #seed: string;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #clock = 0;
+  #live: LiveFeed;
+  #liveOpen = false;
 
   constructor(scene: THREE.Scene, seed: string, labelContainer: HTMLElement) {
     this.#scene = scene;
     this.#seed = seed;
     this.#labelContainer = labelContainer;
+    this.#live = new LiveFeed({
+      onGhosts: (_seed, ghosts) => this.#render(ghosts),
+      onGhost: (_seed, ghost) => this.#upsert(ghost),
+      onState: (open) => this.#setLiveState(open),
+    });
   }
 
   start(): void {
-    void this.#refresh();
+    if (this.#seed) this.#live.subscribe(this.#seed);
   }
 
   setSeed(seed: string): void {
     if (seed === this.#seed) return;
     this.#seed = seed;
     this.#clear();
-    void this.#refresh();
+    this.#live.subscribe(seed);
+    // The socket answers a subscribe with the full list, so only poll if it
+    // isn't there to answer.
+    if (!this.#liveOpen) void this.#refresh();
   }
 
   dispose(): void {
     if (this.#timer) clearTimeout(this.#timer);
+    this.#live.dispose();
     this.#clear();
+  }
+
+  #setLiveState(open: boolean): void {
+    this.#liveOpen = open;
+    if (open) {
+      if (this.#timer) clearTimeout(this.#timer);
+      this.#timer = undefined;
+    } else if (!this.#timer) {
+      void this.#refresh();
+    }
   }
 
   #clear(): void {
@@ -76,28 +99,39 @@ export class GhostLayer {
     const seed = this.#seed;
     try {
       const ghosts = await getGhosts(seed);
-      if (seed === this.#seed) this.#render(ghosts);
+      // Discard the result if the socket came up while this was in flight:
+      // it is now the fresher source, and a stale full list would delete a
+      // ghost that arrived over the socket in the meantime.
+      if (seed === this.#seed && !this.#liveOpen) this.#render(ghosts);
     } catch {
       // Offline or a transient error — the overlay just stays as it was
       // until the next poll; not worth surfacing to the player.
     } finally {
       if (this.#timer) clearTimeout(this.#timer);
-      this.#timer = setTimeout(() => void this.#refresh(), POLL_MIN_MS + Math.random() * POLL_JITTER_MS);
+      this.#timer = this.#liveOpen
+        ? undefined
+        : setTimeout(() => void this.#refresh(), POLL_MIN_MS + Math.random() * POLL_JITTER_MS);
     }
   }
 
+  /** Moves one ghost into place, creating its mesh and label on first sight. */
+  #upsert(ghost: Ghost): void {
+    let entry = this.#entries.get(ghost.username);
+    if (!entry) entry = this.#createEntry(ghost.username);
+    // `lane` is stored as a lateral offset in metres, so runs recorded before
+    // ADR 0004 hold a continuous value. Snapping puts them in a lane instead
+    // of between two, at the cost of up to 1.2m of lateral approximation —
+    // their distance, which is the actual score, is exact.
+    entry.mesh.position.x = laneX(snapToLane(ghost.lane ?? 0));
+    entry.mesh.position.z = -ghost.distance;
+  }
+
+  /** Replaces the whole set — the answer to a subscribe, or to a poll. */
   #render(ghosts: Ghost[]): void {
     const seen = new Set<string>();
     for (const ghost of ghosts) {
       seen.add(ghost.username);
-      let entry = this.#entries.get(ghost.username);
-      if (!entry) entry = this.#createEntry(ghost.username);
-      // `lane` is stored as a lateral offset in metres, so runs recorded
-      // before ADR 0004 hold a continuous value. Snapping puts them in a lane
-      // instead of between two, at the cost of up to 1.2m of lateral
-      // approximation — their distance, which is the actual score, is exact.
-      entry.mesh.position.x = laneX(snapToLane(ghost.lane ?? 0));
-      entry.mesh.position.z = -ghost.distance;
+      this.#upsert(ghost);
     }
     for (const [username, entry] of this.#entries) {
       if (!seen.has(username)) {

@@ -1,6 +1,8 @@
 import express from "express";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { attachLive } from "./lib/live.ts";
 import { apiRouter } from "./routes/index.ts";
 import { readmeRouter } from "./routes/readme.ts";
 
@@ -21,7 +23,13 @@ app.get("/", (_req, res) => {
   res.sendFile(join(clientDist, "index.html"));
 });
 
+// An explicit http.Server rather than app.listen(): the WebSocket server
+// needs something to attach its `upgrade` handling to, and express's own
+// return value is the same object only by accident of implementation.
+const server = createServer(app);
+attachLive(server);
+
 const port = Number(process.env.PORT ?? 8080);
-app.listen(port, "0.0.0.0", () => {
-  console.log(`listening on 0.0.0.0:${port}`);
+server.listen(port, "0.0.0.0", () => {
+  console.log(`listening on 0.0.0.0:${port} (ws at /live)`);
 });

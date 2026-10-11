@@ -1,8 +1,17 @@
 import { Router } from "express";
 import { db } from "../db.ts";
-import { issueToken, setAuthCookie } from "../lib/auth.ts";
+import { issueToken, requireAuth, setAuthCookie } from "../lib/auth.ts";
 
 export const accountRouter: Router = Router();
+
+// Who am I? The auth cookie is httpOnly on purpose, so the browser's own
+// JavaScript cannot read it and cannot answer this question by itself — it has
+// to ask. (It previously tried to answer locally by looking for the cookie in
+// `document.cookie`, which an httpOnly cookie is never in, so the client
+// believed nobody was ever signed in and never saved a run.)
+accountRouter.get("/me", requireAuth, (req, res) => {
+  res.status(200).json({ username: req.user!.username });
+});
 
 accountRouter.post("/account", (req, res) => {
   const { username } = req.body ?? {};

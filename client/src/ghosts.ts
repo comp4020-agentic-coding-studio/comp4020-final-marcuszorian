@@ -12,8 +12,7 @@
 // them — they were never solid, and that's deliberate: insubstantial,
 // something you drive past, not an obstacle.
 import * as THREE from "three";
-import { centerXAtDistance } from "./track.ts";
-import { hashString } from "./track.ts";
+import { hashString, laneX, snapToLane } from "./track.ts";
 import { getGhosts } from "./net.ts";
 import type { Ghost } from "./net.ts";
 import { palette } from "./palette.ts";
@@ -93,8 +92,11 @@ export class GhostLayer {
       seen.add(ghost.username);
       let entry = this.#entries.get(ghost.username);
       if (!entry) entry = this.#createEntry(ghost.username);
-      const x = centerXAtDistance(this.#seed, ghost.distance) + (ghost.lane ?? 0);
-      entry.mesh.position.x = x;
+      // `lane` is stored as a lateral offset in metres, so runs recorded
+      // before ADR 0004 hold a continuous value. Snapping puts them in a lane
+      // instead of between two, at the cost of up to 1.2m of lateral
+      // approximation — their distance, which is the actual score, is exact.
+      entry.mesh.position.x = laneX(snapToLane(ghost.lane ?? 0));
       entry.mesh.position.z = -ghost.distance;
     }
     for (const [username, entry] of this.#entries) {

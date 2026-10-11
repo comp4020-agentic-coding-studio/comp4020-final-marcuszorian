@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createCar, speedAt, stepCar, worldX } from "./car.ts";
+import { createCar, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
 import type { CarState } from "./car.ts";
 import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
@@ -14,7 +14,7 @@ import { PostFX } from "./postfx.ts";
 import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
-import { CHUNK_LENGTH, ROAD_HALF_WIDTH, centerXAtDistance, chunkFor } from "./track.ts";
+import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
 import type { Chunk } from "./track.ts";
 
 // The 3D scene and the HUD read the same sixteen colour tokens — see
@@ -100,10 +100,10 @@ const rim = new THREE.DirectionalLight(0xaab4ff, 0.6);
 rim.position.set(10, 20, 10);
 scene.add(rim);
 
-// DoubleSide: the strip's winding order varies with drift direction per
-// chunk, so a front-face-only material would make the road flicker in and
-// out depending on which way it curves. Simpler and more robust than getting
-// winding exactly right for every drift sign.
+// DoubleSide is no longer load-bearing now the centerline is straight (ADR
+// 0004 retired the per-chunk drift that made winding order vary), but the
+// road is only ever viewed from above and the cost is nil, so it stays as
+// cheap insurance against a flipped winding in a future geometry change.
 const roadMaterial = new THREE.MeshStandardMaterial({ color: roadSurface.three, side: THREE.DoubleSide });
 // Forces three's standard UV varyings to exist even though this material has
 // no texture map — onBeforeCompile below reads vUv to paint edge lines and
@@ -117,10 +117,16 @@ roadMaterial.onBeforeCompile = (shader) => {
     {
       // vUv.x: 0 at the road's left edge, 1 at its right edge (see the uv
       // attribute added in chunkAt). vUv.y: 0..1 along each 20m chunk.
+      // edgeDist is 0 at the centreline, 1 at either road edge — symmetric,
+      // so one expression paints both of a mirrored pair.
       float edgeDist = abs(vUv.x - 0.5) * 2.0;
       float edge = smoothstep(0.84, 0.97, edgeDist);
-      float centreMask = smoothstep(0.09, 0.0, edgeDist);
-      float dash = step(0.5, fract(vUv.y * 6.0)) * centreMask;
+      // The two lane dividers (ADR 0004): lane edges at x = ±LANE_WIDTH/2 on a
+      // road of half-width ROAD_HALF_WIDTH, i.e. edgeDist 0.3. Interpolated as
+      // a literal rather than a uniform — both are compile-time constants, and
+      // this material is shared by every chunk.
+      float divider = smoothstep(0.035, 0.0, abs(edgeDist - ${(LANE_WIDTH / 2 / ROAD_HALF_WIDTH).toFixed(4)}));
+      float dash = step(0.5, fract(vUv.y * 6.0)) * divider;
       vec3 neon = ${glslVec3(palette.cyan.hex)} * 1.5;
       // Added to outgoingLight (pre-tonemap, linear HDR) rather than to
       // gl_FragColor directly: at this point in the standard fragment chunk
@@ -133,7 +139,10 @@ roadMaterial.onBeforeCompile = (shader) => {
     `,
   );
 };
-const obstacleGeometry = new THREE.BoxGeometry(1.2, 1, 1.2);
+// Lane-filling hazard barriers (ADR 0004): the box is exactly one lane wide,
+// which is also car.ts's collision half-width — what you see is what you hit.
+// Shallow in Z so a row of them reads as a gate to thread, not a wall.
+const obstacleGeometry = new THREE.BoxGeometry(LANE_WIDTH, 1, 0.8);
 const obstacleMaterial = new THREE.MeshStandardMaterial({
   color: 0x1a0509,
   emissive: palette.red.three,
@@ -157,7 +166,7 @@ const activeBursts: CrashBurst[] = [];
 // ---- state tied to the currently-selected day ----
 let seed = "";
 let car: CarState = createCar();
-let steer = 0;
+let slide = 0; // normalised lateral velocity, for the cosmetic body roll
 let running = false;
 
 const chunkObjects = new Map<number, THREE.Object3D>();
@@ -172,16 +181,14 @@ function chunkAt(index: number): THREE.Object3D {
 
   const start = index * CHUNK_LENGTH;
   const end = start + CHUNK_LENGTH;
-  const x0 = centerXAtDistance(seed, start);
-  const x1 = centerXAtDistance(seed, end);
   const geometry = new THREE.BufferGeometry();
-  // A trapezoidal strip following the centerline, rather than a flat
-  // rectangle, so the road visibly curves with the seeded drift.
+  // A flat rectangle: ADR 0004 straightened the centerline, so the trapezoidal
+  // strip that used to follow the seeded drift is gone.
   const positions = new Float32Array([
-    x0 - ROAD_HALF_WIDTH, 0, -start,
-    x0 + ROAD_HALF_WIDTH, 0, -start,
-    x1 - ROAD_HALF_WIDTH, 0, -end,
-    x1 + ROAD_HALF_WIDTH, 0, -end,
+    -ROAD_HALF_WIDTH, 0, -start,
+    ROAD_HALF_WIDTH, 0, -start,
+    -ROAD_HALF_WIDTH, 0, -end,
+    ROAD_HALF_WIDTH, 0, -end,
   ]);
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setIndex([0, 2, 1, 1, 2, 3]);
@@ -258,9 +265,17 @@ void daySelector.load();
 ghostLayer.start();
 
 // ---- input ----
-const keys = new Set<string>();
-window.addEventListener("keydown", (e) => keys.add(e.key));
-window.addEventListener("keyup", (e) => keys.delete(e.key));
+// Strict single-tap (ADR 0004): one keypress is one lane. `e.repeat` is the
+// whole point of the guard — without it, holding Left walks the car across
+// the road at the OS key-repeat rate, which is neither a lane change nor
+// anything the player asked for.
+window.addEventListener("keydown", (e) => {
+  if (e.repeat || !running || !usernameModal.hidden) return;
+  const dir = e.key === "ArrowLeft" || e.key === "a" ? -1 : e.key === "ArrowRight" || e.key === "d" ? 1 : 0;
+  if (dir === 0) return;
+  e.preventDefault();
+  shiftLane(car, dir);
+});
 
 restartButton.addEventListener("click", () => resetRun());
 
@@ -316,15 +331,16 @@ function frame(now: number): void {
   elapsed += dt;
 
   if (running && usernameModal.hidden) {
-    steer = (keys.has("ArrowRight") || keys.has("d") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("a") ? 1 : 0);
-
     const currentIndex = Math.floor(car.distance / CHUNK_LENGTH);
     const nearby = [
       ...(chunkObjects.has(currentIndex) ? chunkFor(seed, currentIndex).obstacles : []),
       ...(chunkObjects.has(currentIndex + 1) ? chunkFor(seed, currentIndex + 1).obstacles : []),
     ];
 
-    const justCrashed = stepCar(seed, car, steer, dt, nearby);
+    const previousOffset = car.offset;
+    const justCrashed = stepCar(car, dt, nearby);
+    // Normalised lateral velocity drives the body roll — see CameraRig.updateCarBank.
+    slide = Math.max(-1, Math.min(1, lateralVelocity(car, previousOffset, dt) / SLIDE_PEAK_SPEED));
 
     const nextIndex = Math.floor(car.distance / CHUNK_LENGTH);
     for (let i = nextIndex; i <= nextIndex + LOOKAHEAD_CHUNKS; i++) chunkAt(i);
@@ -337,7 +353,7 @@ function frame(now: number): void {
       crashedEl.hidden = false;
       crashedTextEl.textContent = `crashed at ${Math.floor(car.distance)} m`;
 
-      const burst = new CrashBurst(new THREE.Vector3(worldX(seed, car), 0.6, -car.distance));
+      const burst = new CrashBurst(new THREE.Vector3(car.offset, 0.6, -car.distance));
       scene.add(burst.points);
       activeBursts.push(burst);
       if (!reducedMotion) cameraShake.add(0.9);
@@ -354,11 +370,11 @@ function frame(now: number): void {
     }
   }
 
-  const x = worldX(seed, car);
+  const x = car.offset;
   const z = -car.distance;
   const speed = speedAt(car.distance);
   carMesh.position.set(x, 0.5, z);
-  cameraRig.updateCarBank(carMesh, running ? steer : 0, dt);
+  cameraRig.updateCarBank(carMesh, running ? slide : 0, dt);
   cameraRig.updateCamera(
     camera,
     dt,

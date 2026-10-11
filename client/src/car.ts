@@ -1,57 +1,78 @@
-import { centerXAtDistance, ROAD_HALF_WIDTH } from "./track.ts";
-import type { Obstacle } from "./track.ts";
+import { LANE_HALF_WIDTH, laneX, speedAt } from "./track.ts";
+import type { Lane, Obstacle } from "./track.ts";
 
-const BASE_SPEED = 9; // m/s
-const SPEED_GROWTH = 0.9; // extra m/s per sqrt(metre travelled) — gentle ramp
-const STEER_SPEED = 6; // lateral m/s at full input
+export { speedAt };
+
+/** Seconds for a lane change. ADR 0004: fast enough to feel like a tap. */
+export const SLIDE_SECONDS = 0.12;
 const CAR_HALF_WIDTH = 0.6;
-const OBSTACLE_HALF_WIDTH = 0.6;
+// Barriers fill their lane, so the hitbox half-width IS the lane half-width —
+// what you see is what you hit.
+const OBSTACLE_HALF_WIDTH = LANE_HALF_WIDTH;
 const COLLISION_WINDOW = 1.2; // metres of forward slack for a hit test
+
+/** Peak lateral speed of a slide — the reference the camera banks against. */
+export const SLIDE_PEAK_SPEED = (1.5 * laneX(1)) / SLIDE_SECONDS;
 
 export interface CarState {
   distance: number; // metres travelled — this run's score
-  offset: number; // lateral offset from the track centerline
+  lane: Lane; // the lane the car is in, or sliding toward
+  offset: number; // current lateral position in metres (interpolated)
   crashed: boolean;
+  /** Where the current slide started, in metres. */
+  slideFrom: number;
+  /** Seconds elapsed in the current slide. */
+  slideT: number;
 }
 
 export function createCar(): CarState {
-  return { distance: 0, offset: 0, crashed: false };
+  return { distance: 0, lane: 0, offset: 0, crashed: false, slideFrom: 0, slideT: SLIDE_SECONDS };
 }
 
-export function speedAt(distance: number): number {
-  return BASE_SPEED + SPEED_GROWTH * Math.sqrt(distance);
+/**
+ * Shifts one lane in `dir` (-1 left, +1 right). A press while already sliding
+ * retargets from wherever the car currently is, so taps stay responsive
+ * instead of queueing up behind an animation.
+ */
+export function shiftLane(car: CarState, dir: -1 | 1): void {
+  if (car.crashed) return;
+  const next = car.lane + dir;
+  if (next < -1 || next > 1) return;
+  car.slideFrom = car.offset;
+  car.slideT = 0;
+  car.lane = next as Lane;
 }
 
-export function worldX(seed: string, car: CarState): number {
-  return centerXAtDistance(seed, car.distance) + car.offset;
+/** Smoothstep — ease in and out of the slide rather than starting at full speed. */
+function ease(p: number): number {
+  return p * p * (3 - 2 * p);
 }
 
-// steer is -1..1 (left/right input). Returns true the frame the car crashes.
-export function stepCar(
-  seed: string,
-  car: CarState,
-  steer: number,
-  dt: number,
-  nearbyObstacles: Obstacle[],
-): boolean {
+/** Lateral velocity in m/s, signed. Cosmetic only — camera-rig.ts banks on it. */
+export function lateralVelocity(car: CarState, previousOffset: number, dt: number): number {
+  return dt > 0 ? (car.offset - previousOffset) / dt : 0;
+}
+
+/** Returns true the frame the car crashes. */
+export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]): boolean {
   if (car.crashed) return false;
 
-  const speed = speedAt(car.distance);
-  car.distance += speed * dt;
-  car.offset += steer * STEER_SPEED * dt;
+  car.distance += speedAt(car.distance) * dt;
 
-  const maxOffset = ROAD_HALF_WIDTH - CAR_HALF_WIDTH;
-  if (car.offset > maxOffset || car.offset < -maxOffset) {
-    car.offset = Math.max(-maxOffset, Math.min(maxOffset, car.offset));
-    car.crashed = true;
-    return true;
+  if (car.slideT < SLIDE_SECONDS) {
+    car.slideT = Math.min(SLIDE_SECONDS, car.slideT + dt);
+    const target = laneX(car.lane);
+    car.offset = car.slideFrom + (target - car.slideFrom) * ease(car.slideT / SLIDE_SECONDS);
+  } else {
+    car.offset = laneX(car.lane);
   }
 
-  const carX = worldX(seed, car);
+  // Tested against the interpolated offset, not the target lane: clipping a
+  // barrier part-way through a slide is a crash (ADR 0004).
   const carZ = -car.distance;
   for (const obstacle of nearbyObstacles) {
     if (Math.abs(obstacle.z - carZ) > COLLISION_WINDOW) continue;
-    if (Math.abs(obstacle.x - carX) < CAR_HALF_WIDTH + OBSTACLE_HALF_WIDTH) {
+    if (Math.abs(obstacle.x - car.offset) < CAR_HALF_WIDTH + OBSTACLE_HALF_WIDTH) {
       car.crashed = true;
       return true;
     }

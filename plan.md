@@ -57,32 +57,35 @@ This overhaul pivots the game from continuous analogue steering with curve drift
 ## 4. Implementation Phases
 
 ### Phase 1: Architectural Decision Record
-- [ ] Write `doc/adr/0004-discrete-three-lane-runner.md` superseding ADR 0002 before touching code.
-- [ ] Document context, alternatives ruled out, and ghost snapping consequences.
+- [x] Write `doc/adr/0004-discrete-three-lane-runner.md` before touching code. It supersedes
+      nothing: ADR 0002's data model is untouched, and ADR 0003 already said a change
+      touching the centerline should be a new record. Corrected from the original
+      "superseding ADR 0002".
+- [x] Document context, alternatives ruled out, and ghost snapping consequences.
 
 ### Phase 2: Track & Obstacle Architecture (`client/src/track.ts`)
-- [ ] Flatten road centerline (`centerXAt = 0`, `driftFor = 0`).
-- [ ] Define discrete lane width and lane centers (`-laneWidth`, `0`, `+laneWidth`).
-- [ ] Implement catalogue of 15–20 curated obstacle patterns with strict solvability (1 or 2 blocked lanes, never 3).
-- [ ] Implement seeded deterministic pattern sequencer that loops continuously.
-- [ ] Implement dynamic longitudinal gate spacing scaling with speed.
-- [ ] Update obstacle geometry and materials to lane-filling rectangular red neon hazard barriers.
-- [ ] Update road surface shader with two dashed neon divider lines.
+- [x] Flatten road centerline (`centerXAt = 0`, `driftFor = 0`).
+- [x] Define discrete lane width and lane centers (`-laneWidth`, `0`, `+laneWidth`).
+- [x] Implement catalogue of 15–20 curated obstacle patterns with strict solvability (1 or 2 blocked lanes, never 3).
+- [x] Implement seeded deterministic pattern sequencer that loops continuously.
+- [x] Implement dynamic longitudinal gate spacing scaling with speed.
+- [x] Update obstacle geometry and materials to lane-filling rectangular red neon hazard barriers.
+- [x] Update road surface shader with two dashed neon divider lines.
 
 ### Phase 3: Discrete Car Physics & Controls (`client/src/car.ts`, `client/src/camera-rig.ts`)
-- [ ] Add discrete lane state (`currentLane`, `targetLane`, `transitionTimer`).
-- [ ] Implement single-tap keydown handling (ignoring `e.repeat`).
-- [ ] Implement ~120ms smooth slide interpolation between lanes.
-- [ ] Continuous distance-based speed ramp curve.
-- [ ] Continuous bounding-box collision detection against lane-filling barriers during transitions.
-- [ ] Link vehicle roll/banking to slide velocity.
+- [x] Add discrete lane state (`currentLane`, `targetLane`, `transitionTimer`).
+- [x] Implement single-tap keydown handling (ignoring `e.repeat`).
+- [x] Implement ~120ms smooth slide interpolation between lanes.
+- [x] Continuous distance-based speed ramp curve.
+- [x] Continuous bounding-box collision detection against lane-filling barriers during transitions.
+- [x] Link vehicle roll/banking to slide velocity.
 
 ### Phase 4: Ghost Backward Compatibility (`client/src/ghosts.ts`)
-- [ ] Snap legacy continuous `lane` floats to the nearest discrete lane index (`-1`, `0`, `+1`).
-- [ ] Update ghost meshes to match lane width and visual styling.
+- [x] Snap legacy continuous `lane` floats to the nearest discrete lane index (`-1`, `0`, `+1`).
+- [x] Update ghost meshes to match lane width and visual styling.
 
 ### Phase 5: Verification & Polish
-- [ ] `pnpm typecheck` clean (0 errors).
-- [ ] `pnpm test` passing (8/8 tests).
-- [ ] `pnpm check:evidence` passing.
-- [ ] Browser smoke test: verify lane responsiveness, collision accuracy, obstacle solvability, speed progression, and ghost rendering.
+- [x] `pnpm typecheck` clean (0 errors).
+- [x] `pnpm test` passing (8/8 tests).
+- [x] `pnpm check:evidence` passing.
+- [x] Browser smoke test: verify lane responsiveness, collision accuracy, obstacle solvability, speed progression, and ghost rendering.

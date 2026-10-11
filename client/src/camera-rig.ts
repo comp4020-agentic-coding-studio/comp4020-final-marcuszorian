@@ -1,8 +1,8 @@
-// Speed and weight cues on top of car.ts's lane-offset model, entirely
+// Speed and weight cues on top of car.ts's discrete lane model, entirely
 // cosmetic — nothing here feeds back into the physics in car.ts. Three
 // things, in roughly descending order of how much they actually sell "fast
 // arcade driving" per plan.md's game-feel research: camera lag, FOV widening,
-// and banking the car body into its own steering.
+// and banking the car body into its own lane slide.
 import * as THREE from "three";
 
 const BASE_FOV = 70;
@@ -12,7 +12,10 @@ const FOV_SMOOTH = 4; // higher = snaps to target FOV faster
 
 const CAMERA_LAG_SMOOTH = 6; // higher = tighter follow, lower = more trailing lag
 const MAX_BANK_RADIANS = 0.32;
-const BANK_SMOOTH = 8;
+// Raised from 8 for ADR 0004's lane slides: a slide lasts 120ms, and a
+// smoothing rate of 8 has a ~125ms time constant, so the bank was still
+// winding up as the car arrived. 14 lands the roll inside the slide.
+const BANK_SMOOTH = 14;
 
 export class CameraRig {
   #smoothedPos = new THREE.Vector3();
@@ -57,9 +60,13 @@ export class CameraRig {
     }
   }
 
-  /** Rolls `mesh` into `steer` (-1..1) — banking is most of what sells weight. */
-  updateCarBank(mesh: THREE.Object3D, steer: number, dt: number): void {
-    this.#bank = this.#ease(this.#bank, -steer * MAX_BANK_RADIANS, BANK_SMOOTH, dt);
+  /**
+   * Rolls `mesh` into its lane slide — banking is most of what sells weight.
+   * `slide` is normalised lateral velocity (-1..1), so the roll peaks mid-slide
+   * and unwinds as the car settles, rather than tracking a held key.
+   */
+  updateCarBank(mesh: THREE.Object3D, slide: number, dt: number): void {
+    this.#bank = this.#ease(this.#bank, -slide * MAX_BANK_RADIANS, BANK_SMOOTH, dt);
     mesh.rotation.z = this.#bank;
   }
 }

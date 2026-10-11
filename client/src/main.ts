@@ -17,7 +17,7 @@ import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
-import { createPlayerCar } from "./car-model.ts";
+import { createPlayerCar, setPlayerGhostly } from "./car-model.ts";
 import { createBarrier } from "./barrier-model.ts";
 import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
@@ -255,6 +255,8 @@ function resetRun(): void {
   car = createCar();
   running = true;
   crashedEl.hidden = true;
+  setPlayerGhostly(playerCar, false);
+  speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
 }
 
@@ -421,7 +423,6 @@ usernameForm.addEventListener("submit", (e) => {
 let lastTime = performance.now();
 let elapsed = 0;
 let audioDriving = false;
-speedLines.mesh.visible = !reducedMotion;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
@@ -457,6 +458,11 @@ function frame(now: number): void {
     if (justCrashed) {
       running = false;
       crashedEl.hidden = false;
+      setPlayerGhostly(playerCar, true);
+      // The rushing-past streaks read as the car's own speed; a dead car
+      // isn't going anywhere, so they cut out the instant it crashes rather
+      // than keep streaming past a stationary ghost.
+      speedLines.mesh.visible = false;
       audio.crash();
       // ADR 0006: a past day is a read-only archive, so say so at the moment
       // it matters. Silently not saving would read as a bug — the player just

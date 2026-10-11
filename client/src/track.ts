@@ -67,10 +67,13 @@ const BASE_SPEED = 9; // m/s
 const SPEED_GROWTH = 0.9; // extra m/s per sqrt(metre travelled) — gentle ramp
 // The ceiling the ramp approaches. The sqrt curve alone is unbounded — it
 // passed 100 m/s around 11km, which no reaction window makes fair — so it
-// clamps here, reached at ((MAX_SPEED - BASE_SPEED) / SPEED_GROWTH)^2 ≈ 2300m.
-// Raised from 45 after play-testing: the cap arrived early enough that the
-// back half of a long run stopped developing.
-const MAX_SPEED = 52;
+// clamps here, reached at ((MAX_SPEED - BASE_SPEED) / SPEED_GROWTH)^2 ≈ 3870m.
+// Raised from 45 to 52 after play-testing (the cap arrived early enough that
+// the back half of a long run stopped developing), then to 65 for the same
+// reason one ramp further out: gate spacing is speed × interval (see
+// gateSpacingAt), so a higher ceiling only ever widens gaps, never shrinks the
+// reaction window.
+const MAX_SPEED = 65;
 
 export function speedAt(distance: number): number {
   // Math.max guards the sqrt: a negative distance returns NaN, and because the

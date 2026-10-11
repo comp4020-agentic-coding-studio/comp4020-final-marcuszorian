@@ -79,6 +79,12 @@ function place<T extends THREE.Object3D>(obj: T, x: number, y: number, z: number
   return obj;
 }
 
+interface GhostSwap {
+  obj: THREE.Mesh | THREE.LineSegments;
+  solid: THREE.Material;
+  ghost: THREE.Material;
+}
+
 export function createPlayerCar(): THREE.Group {
   const group = new THREE.Group();
   // No envMap anywhere in this scene, so any metalness above 0 has nothing to
@@ -96,31 +102,86 @@ export function createPlayerCar(): THREE.Group {
   });
   const trim = neonLine(palette.magenta.three);
 
-  group.add(new THREE.Mesh(bodyGeometry, dark), new THREE.LineSegments(bodyEdges, trim));
+  // The player's death look: the same lavender, barely-there style every other
+  // ghost car already wears (see createGhostCar below) — becoming a ghost
+  // means becoming visually indistinguishable from one. One pair of materials,
+  // shared across every swapped part, exactly like createGhostCar's `body`/
+  // `lines` are shared across its whole model.
+  const ghostBody = new THREE.MeshStandardMaterial({
+    color: palette.lavender.three,
+    emissive: palette.lavender.three,
+    emissiveIntensity: 0.6,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+  });
+  const ghostLines = neonLine(palette.lavender.three, 0.8, 1.1);
+
+  // Parts that vanish on death (rims, lights, the wing and wheels' solid
+  // fill) — createGhostCar never draws them either, just their edges.
+  const solidOnly: THREE.Object3D[] = [];
+  // Parts that survive but get re-skinned lavender/translucent.
+  const ghostSwap: GhostSwap[] = [];
+
+  const body = new THREE.Mesh(bodyGeometry, dark);
+  const bodyLine = new THREE.LineSegments(bodyEdges, trim);
+  group.add(body, bodyLine);
+  ghostSwap.push({ obj: body, solid: dark, ghost: ghostBody }, { obj: bodyLine, solid: trim, ghost: ghostLines });
 
   const wheelTrim = neonLine(palette.cyan.three, 1, 1.2);
   for (const [x, z] of WHEEL_SPOTS) {
-    group.add(place(new THREE.Mesh(wheelGeometry, dark), x, WHEEL_Y, z));
+    const wheelMesh = place(new THREE.Mesh(wheelGeometry, dark), x, WHEEL_Y, z);
     // The rim discs face outward, so they're edge-on and invisible from the
     // chase camera — the wheel outline is what actually reads from behind.
-    group.add(place(new THREE.LineSegments(wheelEdges, wheelTrim), x, WHEEL_Y, z));
+    const wheelLine = place(new THREE.LineSegments(wheelEdges, wheelTrim), x, WHEEL_Y, z);
+    group.add(wheelMesh, wheelLine);
+    solidOnly.push(wheelMesh);
+    ghostSwap.push({ obj: wheelLine, solid: wheelTrim, ghost: ghostLines });
+
     const side = Math.sign(x);
-    group.add(place(new THREE.Mesh(rimGeometry, neonFill(palette.cyan.three)), x + side * (WHEEL_W / 2 - 0.015), WHEEL_Y, z));
+    const rim = place(new THREE.Mesh(rimGeometry, neonFill(palette.cyan.three)), x + side * (WHEEL_W / 2 - 0.015), WHEEL_Y, z);
+    group.add(rim);
+    solidOnly.push(rim);
   }
 
   const wing = place(new THREE.Mesh(wingGeometry, dark), WING_POS.x, WING_POS.y, WING_POS.z);
-  group.add(wing, place(new THREE.LineSegments(wingEdges, trim), WING_POS.x, WING_POS.y, WING_POS.z));
+  const wingLine = place(new THREE.LineSegments(wingEdges, trim), WING_POS.x, WING_POS.y, WING_POS.z);
+  group.add(wing, wingLine);
+  solidOnly.push(wing);
+  ghostSwap.push({ obj: wingLine, solid: trim, ghost: ghostLines });
   for (const x of [-0.35, 0.35]) {
-    group.add(place(new THREE.Mesh(strutGeometry, dark), x, WING_POS.y - 0.075, WING_POS.z));
+    const strut = place(new THREE.Mesh(strutGeometry, dark), x, WING_POS.y - 0.075, WING_POS.z);
+    group.add(strut);
+    solidOnly.push(strut);
   }
 
   for (const x of [-0.33, 0.33]) {
-    group.add(place(new THREE.Mesh(headlightGeometry, neonFill(palette.laserCyan.three)), x, -0.19, -0.85));
+    const headlight = place(new THREE.Mesh(headlightGeometry, neonFill(palette.laserCyan.three)), x, -0.19, -0.85);
+    group.add(headlight);
+    solidOnly.push(headlight);
   }
   // Red is the hazard colour here, so the tail strip stays thin and unbloomed.
   const tail = new THREE.MeshBasicMaterial({ color: palette.red.three });
-  group.add(place(new THREE.Mesh(taillightGeometry, tail), 0, -0.2, LENGTH / 2 - 0.01));
+  const tailMesh = place(new THREE.Mesh(taillightGeometry, tail), 0, -0.2, LENGTH / 2 - 0.01);
+  group.add(tailMesh);
+  solidOnly.push(tailMesh);
+
+  group.userData.solidOnly = solidOnly;
+  group.userData.ghostSwap = ghostSwap;
   return group;
+}
+
+/**
+ * Toggles the player car between its solid look and the lavender, translucent
+ * one every ghost car already uses — call with `true` the frame the player
+ * crashes, `false` on the next reset.
+ */
+export function setPlayerGhostly(group: THREE.Group, ghostly: boolean): void {
+  const solidOnly = group.userData.solidOnly as THREE.Object3D[] | undefined;
+  const ghostSwap = group.userData.ghostSwap as GhostSwap[] | undefined;
+  if (!solidOnly || !ghostSwap) return;
+  for (const obj of solidOnly) obj.visible = !ghostly;
+  for (const { obj, solid, ghost } of ghostSwap) obj.material = ghostly ? ghost : solid;
 }
 
 export function createGhostCar(color: THREE.Color): THREE.Group {

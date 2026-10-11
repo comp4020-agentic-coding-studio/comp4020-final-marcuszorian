@@ -94,6 +94,18 @@ export class PostFX {
     this.#rgbShift.uniforms.amount!.value = a * 0.0035;
     this.#film.uniforms.intensity!.value = a * 0.35;
     this.#hueSat.uniforms.saturation!.value = -a * 0.25;
+
+    // At a === 0 all three are exact identity transforms — RGBShift's offset is
+    // (0,0) so its three taps hit one texel, Film mixes the shifted colour in at
+    // 0.0, and HueSaturation at hue/saturation 0 passes rgb straight through —
+    // and today, the default day, is the common case. Measured 1.5 ms/frame on an
+    // Intel iGPU (~30% of all GPU time) to copy the frame unchanged three times,
+    // so disable the passes instead; EffectComposer skips disabled passes and
+    // re-picks which one renders to screen.
+    const aged = a > 0;
+    this.#hueSat.enabled = aged;
+    this.#rgbShift.enabled = aged;
+    this.#film.enabled = aged;
   }
 
   render(dt: number): void {

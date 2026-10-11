@@ -396,7 +396,8 @@
       /* Low-spec / "this is too much" fallback — drops the post-processing
          composer back to a plain render (see postfx.ts). Deliberately small
          and out of the way: it's an escape hatch, not a feature. */
-      #fxToggle {
+      #fxToggle,
+      #soundToggle {
         position: absolute;
         bottom: 16px;
         right: 16px;
@@ -408,9 +409,15 @@
         font-size: 12px;
         cursor: pointer;
       }
-      #fxToggle[aria-pressed="true"] {
+      #fxToggle[aria-pressed="true"],
+      #soundToggle[aria-pressed="true"] {
         color: var(--cyan);
         border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+      }
+      /* Sits immediately left of the effects pill. Offset rather than a flex
+         row because both were already absolutely positioned to the corner. */
+      #soundToggle {
+        right: 142px;
       }
       /* ---- the day's leaderboard ----
          Ranked standings for the day. This project refused a leaderboard for a
@@ -580,6 +587,7 @@
         <div id="crashedText"></div>
         <button id="restart">drive again</button>
       </div>
+      <button id="soundToggle" type="button" aria-pressed="false">mute sound</button>
       <button id="fxToggle" type="button" aria-pressed="false">reduce effects</button>
     </div>
     <div id="usernameModal" class="modal" hidden>

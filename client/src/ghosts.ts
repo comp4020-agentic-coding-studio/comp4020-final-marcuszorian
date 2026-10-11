@@ -12,7 +12,7 @@
 // them — they were never solid, and that's deliberate: insubstantial,
 // something you drive past, not an obstacle.
 import * as THREE from "three";
-import { hashString, laneX, snapToLane } from "./track.ts";
+import { hashString, LANE_WIDTH, laneX, snapToLane } from "./track.ts";
 import { getGhosts, LiveFeed } from "./net.ts";
 import type { Ghost } from "./net.ts";
 import { palette } from "./palette.ts";
@@ -22,6 +22,8 @@ import { createGhostCar, disposeCarModel } from "./car-model.ts";
 // steady-state poll — this is a degraded mode, not the normal one.
 const POLL_MIN_MS = 20_000;
 const POLL_JITTER_MS = 20_000;
+// Metres of road over which a ghost fades up to full presence.
+const NEARNESS_RANGE = 14;
 const BOB_HEIGHT = 0.08;
 const BOB_SPEED = 1.4;
 
@@ -210,5 +212,24 @@ export class GhostLayer {
       const sy = ((1 - (projected.y * 0.5 + 0.5)) * viewHeight).toFixed(1);
       entry.label.style.transform = `translate(${sx}px, ${sy}px)`;
     }
+  }
+
+  /**
+   * How strongly a ghost is being passed right now: 0 with none in range,
+   * rising to 1 at the moment of overlap. Audio reads this to swell the
+   * ghost pad — proximity, not a trigger, because the swell has to peak on
+   * the overlap rather than start there.
+   */
+  nearness(distance: number, offset: number): number {
+    let best = 0;
+    for (const entry of this.#entries.values()) {
+      const ahead = 1 - Math.min(1, Math.abs(entry.ghost.distance - distance) / NEARNESS_RANGE);
+      if (ahead <= best) continue;
+      // A ghost in the next lane still registers, but softly — you drove past
+      // it, not through it.
+      const lateral = Math.abs(laneX(snapToLane(entry.ghost.lane ?? 0)) - offset);
+      best = Math.max(best, ahead * (1 - 0.6 * Math.min(1, lateral / (2 * LANE_WIDTH))));
+    }
+    return best;
   }
 }

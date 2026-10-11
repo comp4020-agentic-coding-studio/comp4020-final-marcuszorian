@@ -19,6 +19,7 @@ import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
 import { createPlayerCar } from "./car-model.ts";
 import { createBarrier } from "./barrier-model.ts";
+import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
 
 // The 3D scene and the HUD read the same sixteen colour tokens — see
@@ -40,6 +41,7 @@ const usernameInput = document.getElementById("username") as HTMLInputElement;
 const usernameError = document.getElementById("usernameError")!;
 const ghostLabelsEl = document.getElementById("ghostLabels")!;
 const fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
+const soundToggle = document.getElementById("soundToggle") as HTMLButtonElement;
 const leaderboardEl = document.getElementById("leaderboard")!;
 
 // ---- three.js scene ----
@@ -87,6 +89,23 @@ syncFxToggle();
 fxToggle.addEventListener("click", () => {
   postfx.setActive(!postfx.active);
   syncFxToggle();
+});
+
+// Sound is the audio twin of the archive aging, so it hangs off the same
+// `archiveAge(seed)` the post-processing reads (see audio.ts). A browser that
+// refuses an AudioContext just stays silent — every method is a no-op then.
+const audio = new AudioEngine();
+function syncSoundToggle(): void {
+  soundToggle.setAttribute("aria-pressed", String(audio.muted));
+  soundToggle.textContent = audio.muted ? "sound muted" : "mute sound";
+}
+syncSoundToggle();
+soundToggle.addEventListener("click", () => {
+  // Doubles as the unlock gesture: a player whose first act is this button
+  // still gets audio, not a context stuck in `suspended`.
+  audio.unlock();
+  audio.setMuted(!audio.muted);
+  syncSoundToggle();
 });
 
 function resize(): void {
@@ -243,7 +262,10 @@ function setSeed(nextSeed: string): void {
   seed = nextSeed;
   ghostLayer.setSeed(seed);
   resetRun();
-  postfx.setArchiveAge(archiveAge(seed));
+  const age = archiveAge(seed);
+  postfx.setArchiveAge(age);
+  audio.setArchiveAge(age);
+  audio.uiBlip("select");
 
   scene.remove(mountains);
   for (const child of mountains.children) {
@@ -271,10 +293,23 @@ window.addEventListener("keydown", (e) => {
   const dir = e.key === "ArrowLeft" || e.key === "a" ? -1 : e.key === "ArrowRight" || e.key === "d" ? 1 : 0;
   if (dir === 0) return;
   e.preventDefault();
+  const before = car.lane;
   shiftLane(car, dir);
+  // Only when the car actually moved: shiftLane refuses past the outer lanes,
+  // and a blip with no lane change reads as the input having worked.
+  if (car.lane !== before) audio.laneShift();
 });
 
-restartButton.addEventListener("click", () => resetRun());
+restartButton.addEventListener("click", () => {
+  audio.unlock();
+  resetRun();
+});
+
+// Autoplay policy keeps the context suspended until a gesture, and the
+// username modal means the first one may be a keypress rather than a click.
+for (const event of ["pointerdown", "keydown"]) {
+  window.addEventListener(event, () => audio.unlock(), { once: true });
+}
 
 // ---- username gate ----
 // Who we are is the server's answer, not a guess from document.cookie — the
@@ -297,6 +332,7 @@ const usernameSubmit = usernameForm.querySelector<HTMLButtonElement>('button[typ
 let submittingAccount = false;
 usernameForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  audio.unlock();
   // Without this guard, a double-tap (easy to do on mobile, which is where
   // this first showed up) fires two submits before the first response comes
   // back: the first registers the name, the second then correctly — but
@@ -337,6 +373,7 @@ usernameForm.addEventListener("submit", (e) => {
 // ---- game loop ----
 let lastTime = performance.now();
 let elapsed = 0;
+let audioDriving = false;
 speedLines.mesh.visible = !reducedMotion;
 
 function frame(now: number): void {
@@ -373,6 +410,7 @@ function frame(now: number): void {
     if (justCrashed) {
       running = false;
       crashedEl.hidden = false;
+      audio.crash();
       // ADR 0006: a past day is a read-only archive, so say so at the moment
       // it matters. Silently not saving would read as a bug — the player just
       // crashed and would reasonably expect a trace.
@@ -397,7 +435,10 @@ function frame(now: number): void {
       if (onToday) {
         postRunEnd(car.distance, car.offset, seed)
           .then((result) => {
-            if (result.improved) void daySelector.load();
+            if (result.improved) {
+              audio.uiBlip("best");
+              void daySelector.load();
+            }
           })
           .catch(() => {
             // best-effort — a failed save doesn't block playing again
@@ -426,10 +467,19 @@ function frame(now: number): void {
   updateMountains(mountains, camera);
   ghostLayer.update(dt, camera, window.innerWidth, window.innerHeight);
 
-  if (speedLines.mesh.visible) {
-    const speedFactor = Math.max(0, Math.min(1.5, (speed - 9) / 30));
-    speedLines.update(dt, speedFactor, camera.position);
+  // Derived from the same condition that gates stepping, rather than latched
+  // at reset and crash, so the modal, a crash and a day switch all agree.
+  const driving = running && !!usernameModal.hidden;
+  if (driving !== audioDriving) {
+    audioDriving = driving;
+    audio.setDriving(driving);
   }
+
+  const speedFactor = Math.max(0, Math.min(1.5, (speed - 9) / 30));
+  if (speedLines.mesh.visible) speedLines.update(dt, speedFactor, camera.position);
+  // The engine filter and the ghost swell both want 0..1; speedFactor runs to
+  // 1.5 so the speed lines keep thickening past the point the audio tops out.
+  audio.update(dt, Math.min(1, speedFactor), running ? ghostLayer.nearness(car.distance, car.offset) : 0);
 
   for (let i = activeBursts.length - 1; i >= 0; i--) {
     if (!activeBursts[i]!.update(dt)) {

@@ -19,8 +19,17 @@ rank, you read it as "someone else was right here."
 So, for now, good means:
 
 - **Your trace is something you drive past, not something you look up.**
-  No leaderboard screen, no tab to check. The only way to see how you're
-  doing against everyone else is to literally drive through where they were.
+  No leaderboard screen, no tab to check, no rank. The only way to see how
+  you're *doing* against everyone else is to literally drive through where
+  they were.
+
+  There is a roster down the side listing who's on the day you're looking at
+  and how far they got. That isn't the thing this bullet refuses: it has no
+  rank numbers and no positions, every row is a ghost you can go and find on
+  the road, and it exists because a day's archive was otherwise mostly
+  unreachable — most runs end at the first barrier, so most ghosts were never
+  seen by anyone. Knowing who's out here is not the same as being told where
+  you stand. See `doc/adr/0007-day-roster.md`.
 - **A day is a real place, not just a label.** Every day gets its own road
   and its own ghosts, and — deliberately — you can go back. "Last Tuesday" is
   a specific thing you can return to and drive, the same way a specific
@@ -89,7 +98,8 @@ player's magenta or the road's cyan — the one colour in the scene that's
 "the other genre," because the ghosts are the one thing here that isn't
 about going fast.
 
-What didn't change: there's still no leaderboard, and there still won't be
+What didn't change: there's still no leaderboard — no ranks, no positions,
+and there still won't be
 one. A high-score table is exactly the kind of thing this aesthetic's
 reference material is full of, and it's exactly what the "good means" section
 above rules out on purpose — a ghost is something you drive past, not a rank

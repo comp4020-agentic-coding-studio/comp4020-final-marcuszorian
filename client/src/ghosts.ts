@@ -31,6 +31,8 @@ interface GhostEntry {
   mesh: THREE.Mesh;
   label: HTMLDivElement;
   phase: number;
+  /** The run this ghost stands for — the roster reads it; the scene doesn't. */
+  ghost: Ghost;
 }
 
 export class GhostLayer {
@@ -42,11 +44,18 @@ export class GhostLayer {
   #clock = 0;
   #live: LiveFeed;
   #liveOpen = false;
+  #onChange: ((ghosts: Ghost[]) => void) | undefined;
 
-  constructor(scene: THREE.Scene, seed: string, labelContainer: HTMLElement) {
+  constructor(
+    scene: THREE.Scene,
+    seed: string,
+    labelContainer: HTMLElement,
+    onChange?: (ghosts: Ghost[]) => void,
+  ) {
     this.#scene = scene;
     this.#seed = seed;
     this.#labelContainer = labelContainer;
+    this.#onChange = onChange;
     this.#live = new LiveFeed({
       onGhosts: (_seed, ghosts) => this.#render(ghosts),
       onGhost: (_seed, ghost) => this.#upsert(ghost),
@@ -87,6 +96,15 @@ export class GhostLayer {
   #clear(): void {
     for (const entry of this.#entries.values()) this.#removeEntry(entry);
     this.#entries.clear();
+    this.#notify();
+  }
+
+  /** Hands the roster the current set, newest state first. */
+  #notify(): void {
+    if (!this.#onChange) return;
+    const ghosts = [...this.#entries.values()].map((e) => e.ghost);
+    ghosts.sort((a, b) => b.distance - a.distance);
+    this.#onChange(ghosts);
   }
 
   #removeEntry(entry: GhostEntry): void {
@@ -115,15 +133,17 @@ export class GhostLayer {
   }
 
   /** Moves one ghost into place, creating its mesh and label on first sight. */
-  #upsert(ghost: Ghost): void {
+  #upsert(ghost: Ghost, notify = true): void {
     let entry = this.#entries.get(ghost.username);
     if (!entry) entry = this.#createEntry(ghost.username);
+    entry.ghost = ghost;
     // `lane` is stored as a lateral offset in metres, so runs recorded before
     // ADR 0004 hold a continuous value. Snapping puts them in a lane instead
     // of between two, at the cost of up to 1.2m of lateral approximation —
     // their distance, which is the actual score, is exact.
     entry.mesh.position.x = laneX(snapToLane(ghost.lane ?? 0));
     entry.mesh.position.z = -ghost.distance;
+    if (notify) this.#notify();
   }
 
   /** Replaces the whole set — the answer to a subscribe, or to a poll. */
@@ -131,7 +151,7 @@ export class GhostLayer {
     const seen = new Set<string>();
     for (const ghost of ghosts) {
       seen.add(ghost.username);
-      this.#upsert(ghost);
+      this.#upsert(ghost, false); // one notify for the whole batch, below
     }
     for (const [username, entry] of this.#entries) {
       if (!seen.has(username)) {
@@ -139,6 +159,7 @@ export class GhostLayer {
         this.#entries.delete(username);
       }
     }
+    this.#notify();
   }
 
   #createEntry(username: string): GhostEntry {
@@ -165,7 +186,12 @@ export class GhostLayer {
     label.hidden = true;
     this.#labelContainer.appendChild(label);
 
-    const entry: GhostEntry = { mesh, label, phase: (h % 628) / 100 };
+    const entry: GhostEntry = {
+      mesh,
+      label,
+      phase: (h % 628) / 100,
+      ghost: { username, distance: 0, lane: null }, // replaced by the caller
+    };
     this.#entries.set(username, entry);
     return entry;
   }

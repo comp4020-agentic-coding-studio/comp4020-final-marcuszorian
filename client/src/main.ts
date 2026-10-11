@@ -12,6 +12,7 @@ import { glslVec3 } from "./gradients.ts";
 import { createGrid, updateGrid } from "./grid.ts";
 import { createMountains, updateMountains } from "./mountains.ts";
 import { PostFX } from "./postfx.ts";
+import { Roster } from "./roster.ts";
 import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
@@ -37,6 +38,7 @@ const usernameInput = document.getElementById("username") as HTMLInputElement;
 const usernameError = document.getElementById("usernameError")!;
 const ghostLabelsEl = document.getElementById("ghostLabels")!;
 const fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
+const rosterEl = document.getElementById("roster")!;
 
 // ---- three.js scene ----
 const scene = new THREE.Scene();
@@ -171,7 +173,10 @@ let slide = 0; // normalised lateral velocity, for the cosmetic body roll
 let running = false;
 
 const chunkObjects = new Map<number, THREE.Object3D>();
-const ghostLayer = new GhostLayer(scene, "", ghostLabelsEl);
+// The roster reads the same ghost set the scene draws, so the panel and the
+// road can never disagree about who is on this day.
+const roster = new Roster(rosterEl);
+const ghostLayer = new GhostLayer(scene, "", ghostLabelsEl, (ghosts) => roster.update(ghosts));
 
 function chunkAt(index: number): THREE.Object3D {
   let obj = chunkObjects.get(index);

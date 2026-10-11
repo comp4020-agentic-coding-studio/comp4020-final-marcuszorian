@@ -412,6 +412,107 @@
         color: var(--cyan);
         border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
       }
+      /* ---- the day's roster ----
+         Who is on this road, not a ranking: no rank numbers, no positions.
+         See doc/adr/0007-day-roster.md.
+
+         Sized to its content and anchored to one corner — deliberately NOT
+         inset:0. #ghostLabels was a full-screen child of #hud and silently ate
+         every click on the day selector; anything added here inherits
+         pointer-events:auto from `#hud > *` the same way, so it must never
+         cover ground it doesn't draw on. */
+      #roster {
+        position: absolute;
+        left: 16px;
+        top: 72px;
+        width: 190px;
+        max-width: calc(100vw - 32px);
+        font-size: 12px;
+      }
+      #roster details {
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+        border: 1px solid color-mix(in srgb, var(--cyan) 26%, transparent);
+        border-radius: 8px;
+        padding: 8px 10px;
+        backdrop-filter: blur(3px);
+      }
+      #roster summary {
+        cursor: pointer;
+        color: var(--lilac);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 10px;
+        list-style: none;
+      }
+      #roster summary::-webkit-details-marker {
+        display: none;
+      }
+      #roster summary::after {
+        content: " ▾";
+        opacity: 0.6;
+      }
+      #roster details[open] summary::after {
+        content: " ▴";
+      }
+      .roster-count {
+        color: var(--cyan);
+        font-weight: 700;
+      }
+      .roster-empty {
+        margin: 8px 0 0;
+        color: var(--lilac);
+        opacity: 0.75;
+      }
+      .roster-list {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        max-height: 46vh;
+        overflow-y: auto;
+      }
+      .roster-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 3px 0;
+      }
+      /* Lavender is the ghosts' colour everywhere else in the scene, but it
+         fails small-text contrast — pink is the same family at 8.8:1, the same
+         substitution .ghost-label already makes. */
+      .roster-name {
+        color: var(--pink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .roster-distance {
+        color: var(--hotWhite);
+        font-variant-numeric: tabular-nums;
+        flex: none;
+      }
+
+      /* On a phone it becomes a disclosure near the top instead of a side
+         panel, which would otherwise sit over the road. roster.ts drives the
+         open/closed state off the same breakpoint. */
+      @media (max-width: 700px) {
+        #roster {
+          left: 16px;
+          right: 16px;
+          top: 76px;
+          width: auto;
+          max-width: none;
+        }
+        /* Nearly opaque here, unlike the desktop panel: opened, this sits over
+           the wrapped logo, and at 72% the text behind it showed through and
+           read as clutter. */
+        #roster details {
+          background: color-mix(in srgb, var(--surface) 94%, transparent);
+        }
+        .roster-list {
+          max-height: 38vh;
+        }
+      }
+
     </style>
   </head>
   <body>
@@ -425,6 +526,15 @@
         <span id="dayLabel">today</span>
         <button id="nextDay" aria-label="next day">&rarr;</button>
       </div>
+      <section id="roster" aria-label="who is on this road">
+        <details>
+          <summary>
+            on this road <span class="roster-count">0</span>
+          </summary>
+          <p class="roster-empty">nobody has driven this day yet</p>
+          <ul class="roster-list" hidden></ul>
+        </details>
+      </section>
       <div id="ghostLabels"></div>
       <div id="crashed" class="panel" hidden>
         <div id="crashedText"></div>

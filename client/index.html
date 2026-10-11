@@ -255,6 +255,14 @@
       /* ---- ghost name tags — see ghosts.ts; projected into screen space
          every frame, so position is set via `transform`, never layout ---- */
       #ghostLabels {
+        /* A full-screen overlay holding the projected ghost name tags. It is a
+           direct child of #hud, so `#hud > * { pointer-events: auto }` was
+           turning the whole viewport into a click target and swallowing the
+           day-selector buttons underneath it — the labels are readouts, never
+           click targets, so it opts back out exactly like #scanlines and
+           #vignette above. Caught by elementFromPoint: a scripted .click()
+           bypasses hit-testing and passed right through this for weeks. */
+        pointer-events: none !important;
         position: absolute;
         inset: 0;
       }

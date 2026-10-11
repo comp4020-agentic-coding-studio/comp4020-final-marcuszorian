@@ -284,21 +284,68 @@ void daySelector.load();
 ghostLayer.start();
 
 // ---- input ----
-// Strict single-tap (ADR 0004): one keypress is one lane. `e.repeat` is the
-// whole point of the guard — without it, holding Left walks the car across
-// the road at the OS key-repeat rate, which is neither a lane change nor
-// anything the player asked for.
-window.addEventListener("keydown", (e) => {
-  if (e.repeat || !running || !usernameModal.hidden) return;
-  const dir = e.key === "ArrowLeft" || e.key === "a" ? -1 : e.key === "ArrowRight" || e.key === "d" ? 1 : 0;
-  if (dir === 0) return;
-  e.preventDefault();
+// Strict single-tap (ADR 0004): one gesture is one lane, whether that gesture
+// is a keypress or a swipe. Both paths below go through steer(), so the two
+// cannot drift apart — there is one definition of what a lane change is, and
+// one place the blip fires.
+function steer(dir: -1 | 1): void {
+  if (!running || !usernameModal.hidden) return;
   const before = car.lane;
   shiftLane(car, dir);
   // Only when the car actually moved: shiftLane refuses past the outer lanes,
   // and a blip with no lane change reads as the input having worked.
   if (car.lane !== before) audio.laneShift();
+}
+
+// `e.repeat` is the whole point of this guard — without it, holding Left walks
+// the car across the road at the OS key-repeat rate, which is neither a lane
+// change nor anything the player asked for. The running/modal check stays here
+// as well as in steer(): it has to come before preventDefault, or an arrow key
+// typed into the username field would stop moving the text caret.
+window.addEventListener("keydown", (e) => {
+  if (e.repeat || !running || !usernameModal.hidden) return;
+  const dir = e.key === "ArrowLeft" || e.key === "a" ? -1 : e.key === "ArrowRight" || e.key === "d" ? 1 : 0;
+  if (dir === 0) return;
+  e.preventDefault();
+  steer(dir);
 });
+
+// Touch: a swipe is the arrow key's mobile twin. One lane per swipe, for the
+// same reason e.repeat is guarded above — a long drag is still one gesture and
+// must not walk the car across the road, so the swipe is spent once it fires.
+//
+// The lane changes the moment the threshold is crossed rather than on lift. A
+// slide takes SLIDE_SECONDS and gates arrive a third of a second apart at the
+// top of the ramp, so waiting for the finger to come up would spend most of
+// the reaction window doing nothing.
+//
+// Only gestures that start on the canvas steer. Everything interactive lives
+// in #hud under pointer-events:auto, so a touch that starts there is someone
+// reaching for a button, not driving.
+const SWIPE_MIN_PX = 24; // clear of a tap's jitter, well short of a deliberate flick
+let swipe: { id: number; x: number; y: number; spent: boolean } | null = null;
+
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, spent: false };
+});
+
+// Move and release listen on window, not the canvas: a finger that strays over
+// the HUD mid-swipe is still the same gesture and should still steer.
+window.addEventListener("pointermove", (e) => {
+  if (!swipe || swipe.spent || e.pointerId !== swipe.id) return;
+  const dx = e.clientX - swipe.x;
+  const dy = e.clientY - swipe.y;
+  // Horizontal intent: a mostly-vertical drag is not a lane change.
+  if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
+  swipe.spent = true;
+  steer(dx < 0 ? -1 : 1);
+});
+
+const endSwipe = (e: PointerEvent): void => {
+  if (swipe && e.pointerId === swipe.id) swipe = null;
+};
+window.addEventListener("pointerup", endSwipe);
+window.addEventListener("pointercancel", endSwipe);
 
 restartButton.addEventListener("click", () => {
   audio.unlock();

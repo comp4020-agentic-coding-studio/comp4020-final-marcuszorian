@@ -45,6 +45,11 @@
       }
       canvas {
         display: block;
+        /* A swipe across the road steers (see main.ts's steer()). Without this
+           the browser claims horizontal drags first — scroll, overscroll glow,
+           and the edge swipe that navigates back — and the page never sees the
+           gesture at all. */
+        touch-action: none;
       }
 
       #hud {
@@ -56,6 +61,14 @@
       }
       #hud > * {
         pointer-events: auto;
+      }
+      /* Readouts, not controls. A swipe only starts on the canvas, so anything
+         up here that claims pointer events is a patch of road you cannot steer
+         from — same reasoning as #ghostLabels below, which was caught doing
+         exactly that to the day buttons. */
+      #logo,
+      #score {
+        pointer-events: none;
       }
 
       /* ---- non-interactive overlays: scanlines + vignette ----

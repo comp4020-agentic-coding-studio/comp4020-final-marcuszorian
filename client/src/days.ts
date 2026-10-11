@@ -6,6 +6,15 @@ import { getDays } from "./net.ts";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+// The day the archive opens. Navigation is bounded by the CALENDAR, not by
+// which days happen to have runs in them: a day's track is a pure function of
+// its date (doc/adr/0002-daily-seeded-archive.md), so every date between here
+// and today is a real, playable, identical-for-every-player road whether or
+// not anyone has driven it yet. Gating on recorded activity instead meant a
+// fresh database let you step back exactly one day and then greyed the button
+// out, which made the archive look broken when it was merely empty.
+export const ARCHIVE_EPOCH = "2026-09-28";
+
 export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -27,7 +36,17 @@ export function archiveAge(seed: string): number {
   return Math.max(0, Math.min(1, daysAgo(seed) / 30));
 }
 
-function shiftDay(seed: string, delta: number): string {
+/** Whether stepping back from `seed` lands on a day the archive covers. */
+export function canGoBack(seed: string): boolean {
+  return seed > ARCHIVE_EPOCH;
+}
+
+/** Whether stepping forward from `seed` lands on a day that has happened. */
+export function canGoForward(seed: string): boolean {
+  return seed < todayUtc();
+}
+
+export function shiftDay(seed: string, delta: number): string {
   const d = new Date(`${seed}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);
   return d.toISOString().slice(0, 10);
@@ -72,8 +91,8 @@ export class DaySelector {
   }
 
   #go(delta: number): void {
+    if (delta < 0 ? !canGoBack(this.#seed) : !canGoForward(this.#seed)) return;
     const next = shiftDay(this.#seed, delta);
-    if (next > todayUtc()) return; // never race a day that hasn't happened
     this.#seed = next;
     this.#render();
     this.#onChange(this.#seed);
@@ -81,11 +100,11 @@ export class DaySelector {
 
   #render(): void {
     this.#label.textContent = labelFor(this.#seed);
-    this.#nextButton.disabled = this.#seed >= todayUtc();
-    // Going back is only disabled past the oldest day with any recorded
-    // activity, plus one — so you can always step back exactly one day
-    // beyond the archive to start a fresh, empty one deliberately.
-    const oldest = this.#knownDays.length > 0 ? this.#knownDays[this.#knownDays.length - 1]! : this.#seed;
-    this.#prevButton.disabled = this.#seed <= shiftDay(oldest, -1);
+    this.#nextButton.disabled = !canGoForward(this.#seed);
+    this.#prevButton.disabled = !canGoBack(this.#seed);
+    // /api/days no longer decides where you can go — it says which days have
+    // someone's trace in them, so an empty day can look empty rather than
+    // looking broken.
+    this.#label.dataset.hasRuns = String(this.#knownDays.includes(this.#seed));
   }
 }

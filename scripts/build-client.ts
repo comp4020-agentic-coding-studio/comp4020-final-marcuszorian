@@ -4,7 +4,7 @@
 // needs bundling, since a browser can't resolve bare `node_modules` imports
 // (here: three) or run TypeScript on its own.
 import { build } from "esbuild";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { brotliCompressSync, gzipSync, constants } from "node:zlib";
 
 const minified = process.env.NODE_ENV === "production";
@@ -35,6 +35,7 @@ copyFileSync("client/index.html", "dist/client/index.html");
 // and a stale .br left beside a fresh dev bundle would quietly serve the
 // previous build — worse than not compressing at all.
 const kib = (n: number) => `${Math.round(n / 1024)} KiB`;
+const twins = ["dist/client/bundle.js.br", "dist/client/bundle.js.gz"];
 let sizes = "";
 if (minified) {
   const bundle = readFileSync("dist/client/bundle.js");
@@ -42,9 +43,16 @@ if (minified) {
     params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
   });
   const gz = gzipSync(bundle, { level: 9 });
-  writeFileSync("dist/client/bundle.js.br", br);
-  writeFileSync("dist/client/bundle.js.gz", gz);
+  writeFileSync(twins[0]!, br);
+  writeFileSync(twins[1]!, gz);
   sizes = ` (bundle ${kib(bundle.length)}, br ${kib(br.length)}, gz ${kib(gz.length)})`;
+} else {
+  // Not compressing is not enough on its own — any twins a previous
+  // production build left behind have to go. The server prefers a twin
+  // whenever one exists, so a stale pair sits there serving the last
+  // production bundle to every dev request. Found the hard way, by a freshly
+  // built change that never reached the browser.
+  for (const f of twins) rmSync(f, { force: true });
 }
 
 console.log(`built dist/client/${sizes}`);

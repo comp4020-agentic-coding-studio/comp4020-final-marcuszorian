@@ -18,18 +18,21 @@ rank, you read it as "someone else was right here."
 
 So, for now, good means:
 
-- **Your trace is something you drive past, not something you look up.**
-  No leaderboard screen, no tab to check, no rank. The only way to see how
-  you're *doing* against everyone else is to literally drive through where
-  they were.
+- **Your trace is something you drive past.** A ghost is a presence at a
+  place on a road — someone else's "right here" — and that is still what this
+  game is built around.
 
-  There is a roster down the side listing who's on the day you're looking at
-  and how far they got. That isn't the thing this bullet refuses: it has no
-  rank numbers and no positions, every row is a ghost you can go and find on
-  the road, and it exists because a day's archive was otherwise mostly
-  unreachable — most runs end at the first barrier, so most ghosts were never
-  seen by anyone. Knowing who's out here is not the same as being told where
-  you stand. See `doc/adr/0007-day-roster.md`.
+  This bullet used to go further. It said there was no leaderboard, no tab to
+  check, and that the only way to see how you were doing against anyone else
+  was to drive through where they'd been. That was true for most of this
+  project's life and it isn't any more: there's a ranked leaderboard down the
+  side, top ten for the day, with your own position below it if you're not in
+  them. The honest reckoning is in `doc/adr/0009-leaderboard.md`, including
+  what it costs — ghosts are no longer the only way to meet other players,
+  only the only way to meet them *in space*. The earlier argument is kept in
+  `doc/adr/0007-day-roster.md` and `0008-roster-top-ten.md` rather than
+  quietly deleted, because it was a good argument and losing it was a
+  decision, not an accident.
 - **A day is a real place, not just a label.** Every day gets its own road
   and its own ghosts, and — deliberately — you can go back. "Last Tuesday" is
   a specific thing you can return to and drive, the same way a specific
@@ -98,11 +101,15 @@ player's magenta or the road's cyan — the one colour in the scene that's
 "the other genre," because the ghosts are the one thing here that isn't
 about going fast.
 
-What didn't change: there's still no leaderboard — no ranks, no positions,
-and there still won't be
-one. A high-score table is exactly the kind of thing this aesthetic's
-reference material is full of, and it's exactly what the "good means" section
-above rules out on purpose — a ghost is something you drive past, not a rank
-you check. The ADR for this (`doc/adr/0003-visual-direction.md`) and the
-build plan (`plan.md`) have the rest: the full palette, what it's built from,
-and what was tried and ruled out.
+This section used to end by saying there was still no leaderboard and there
+never would be — that a high-score table is exactly the kind of thing this
+aesthetic's reference material is full of, and exactly what the "good means"
+section rules out, because a ghost is something you drive past, not a rank you
+check. That was the position for most of this project, and it was held on
+purpose against a visual language that kept offering the opposite.
+
+It has since been reversed: there is a ranked leaderboard, and
+`doc/adr/0009-leaderboard.md` is where that was argued, including what it
+costs and what it undermines. The aesthetic argument here is unaffected —
+`doc/adr/0003-visual-direction.md` and the build plan (`plan.md`) still have
+the full palette, what it's built from, and what was tried and ruled out.

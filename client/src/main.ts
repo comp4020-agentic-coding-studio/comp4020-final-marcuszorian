@@ -12,7 +12,7 @@ import { glslVec3 } from "./gradients.ts";
 import { createGrid, updateGrid } from "./grid.ts";
 import { createMountains, updateMountains } from "./mountains.ts";
 import { PostFX } from "./postfx.ts";
-import { Roster } from "./roster.ts";
+import { Leaderboard } from "./leaderboard.ts";
 import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
@@ -38,7 +38,7 @@ const usernameInput = document.getElementById("username") as HTMLInputElement;
 const usernameError = document.getElementById("usernameError")!;
 const ghostLabelsEl = document.getElementById("ghostLabels")!;
 const fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
-const rosterEl = document.getElementById("roster")!;
+const leaderboardEl = document.getElementById("leaderboard")!;
 
 // ---- three.js scene ----
 const scene = new THREE.Scene();
@@ -173,10 +173,10 @@ let slide = 0; // normalised lateral velocity, for the cosmetic body roll
 let running = false;
 
 const chunkObjects = new Map<number, THREE.Object3D>();
-// The roster reads the same ghost set the scene draws, so the panel and the
-// road can never disagree about who is on this day.
-const roster = new Roster(rosterEl);
-const ghostLayer = new GhostLayer(scene, "", ghostLabelsEl, (ghosts) => roster.update(ghosts));
+// The leaderboard reads the same ghost set the scene draws, so the panel and
+// the road can never disagree about who is on this day.
+const leaderboard = new Leaderboard(leaderboardEl);
+const ghostLayer = new GhostLayer(scene, "", ghostLabelsEl, (ghosts) => leaderboard.update(ghosts));
 
 function chunkAt(index: number): THREE.Object3D {
   let obj = chunkObjects.get(index);
@@ -294,7 +294,7 @@ let account: Account | null = null;
 getAccount()
   .then((found) => {
     account = found;
-    roster.setViewer(found?.username ?? null);
+    leaderboard.setViewer(found?.username ?? null);
     if (!found) usernameModal.hidden = false;
   })
   .catch(() => {
@@ -321,7 +321,7 @@ usernameForm.addEventListener("submit", (e) => {
   postAccount(name)
     .then((created) => {
       account = created;
-      roster.setViewer(created.username);
+      leaderboard.setViewer(created.username);
       usernameModal.hidden = true;
       // Start them at 0: the loop was running while we asked the server who
       // they were, so without this their first run begins a metre or two in.

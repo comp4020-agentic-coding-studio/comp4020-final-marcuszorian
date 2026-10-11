@@ -31,7 +31,7 @@ interface GhostEntry {
   mesh: THREE.Mesh;
   label: HTMLDivElement;
   phase: number;
-  /** The run this ghost stands for — the roster reads it; the scene doesn't. */
+  /** The run this ghost stands for — the leaderboard reads it; the scene doesn't. */
   ghost: Ghost;
 }
 
@@ -99,12 +99,14 @@ export class GhostLayer {
     this.#notify();
   }
 
-  /** Hands the roster the current set, newest state first. */
+  /**
+   * Hands the leaderboard the current set. Unordered on purpose: ranking is a
+   * presentation decision and `standings()` in leaderboard.ts owns it, so
+   * there is exactly one definition of what beats what.
+   */
   #notify(): void {
     if (!this.#onChange) return;
-    const ghosts = [...this.#entries.values()].map((e) => e.ghost);
-    ghosts.sort((a, b) => b.distance - a.distance);
-    this.#onChange(ghosts);
+    this.#onChange([...this.#entries.values()].map((e) => e.ghost));
   }
 
   #removeEntry(entry: GhostEntry): void {

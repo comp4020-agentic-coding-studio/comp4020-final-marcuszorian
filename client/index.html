@@ -412,16 +412,17 @@
         color: var(--cyan);
         border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
       }
-      /* ---- the day's roster ----
-         Who is on this road, not a ranking: no rank numbers, no positions.
-         See doc/adr/0007-day-roster.md.
+      /* ---- the day's leaderboard ----
+         Ranked standings for the day. This project refused a leaderboard for a
+         long time and argued the case in README.md; doc/adr/0009-leaderboard.md
+         is where that was reversed, superseding 0007 and 0008.
 
          Sized to its content and anchored to one corner — deliberately NOT
          inset:0. #ghostLabels was a full-screen child of #hud and silently ate
          every click on the day selector; anything added here inherits
          pointer-events:auto from `#hud > *` the same way, so it must never
          cover ground it doesn't draw on. */
-      #roster {
+      #leaderboard {
         position: absolute;
         left: 16px;
         top: 72px;
@@ -429,14 +430,14 @@
         max-width: calc(100vw - 32px);
         font-size: 12px;
       }
-      #roster details {
+      #leaderboard details {
         background: color-mix(in srgb, var(--surface) 72%, transparent);
         border: 1px solid color-mix(in srgb, var(--cyan) 26%, transparent);
         border-radius: 8px;
         padding: 8px 10px;
         backdrop-filter: blur(3px);
       }
-      #roster summary {
+      #leaderboard summary {
         cursor: pointer;
         color: var(--lilac);
         letter-spacing: 0.08em;
@@ -444,69 +445,85 @@
         font-size: 10px;
         list-style: none;
       }
-      #roster summary::-webkit-details-marker {
+      #leaderboard summary::-webkit-details-marker {
         display: none;
       }
-      #roster summary::after {
+      #leaderboard summary::after {
         content: " ▾";
         opacity: 0.6;
       }
-      #roster details[open] summary::after {
+      #leaderboard details[open] summary::after {
         content: " ▴";
       }
-      .roster-count {
+      .leaderboard-count {
         color: var(--cyan);
         font-weight: 700;
       }
-      .roster-empty {
+      .leaderboard-empty {
         margin: 8px 0 0;
         color: var(--lilac);
         opacity: 0.75;
       }
-      .roster-list {
+      .leaderboard-list {
         list-style: none;
         margin: 8px 0 0;
         padding: 0;
         max-height: 46vh;
         overflow-y: auto;
       }
-      .roster-row {
+      .leaderboard-row {
         display: flex;
-        justify-content: space-between;
-        gap: 10px;
+        align-items: baseline;
+        gap: 8px;
         padding: 3px 0;
+      }
+      .leaderboard-rank {
+        color: var(--lilac);
+        font-variant-numeric: tabular-nums;
+        min-width: 1.6em;
+        text-align: right;
+        flex: none;
+      }
+      /* The top three carry the warm end of the palette — gold, then the two
+         metals read as cooler. Nothing else in the scene uses gold, so it
+         stays legible as "first" rather than as decoration. */
+      .leaderboard-row:nth-child(1) .leaderboard-rank {
+        color: var(--gold);
+      }
+      .leaderboard-row:nth-child(2) .leaderboard-rank,
+      .leaderboard-row:nth-child(3) .leaderboard-rank {
+        color: var(--hotWhite);
       }
       /* Lavender is the ghosts' colour everywhere else in the scene, but it
          fails small-text contrast — pink is the same family at 8.8:1, the same
          substitution .ghost-label already makes. */
-      .roster-name {
+      .leaderboard-name {
         color: var(--pink);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex: 1 1 auto;
       }
-      .roster-distance {
+      .leaderboard-distance {
         color: var(--hotWhite);
         font-variant-numeric: tabular-nums;
         flex: none;
       }
       /* Your own run. Marked wherever it appears — inside the ten or below the
          gap — so the row means the same thing in both places. */
-      .roster-row.is-you .roster-name,
-      .roster-row.is-you .roster-distance {
+      .leaderboard-row.is-you .leaderboard-name,
+      .leaderboard-row.is-you .leaderboard-distance {
         color: var(--mint);
       }
-      .roster-you {
+      .leaderboard-you {
         color: var(--lilac);
         font-size: 10px;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         margin-left: 4px;
       }
-      /* The break between the ten and you. Deliberately not a rank number:
-         "outside the top ten" is the useful part, the exact position is the
-         part doc/adr/0007 and 0008 both refuse. */
-      .roster-gap {
+      /* The break between the ten and your own row further down. */
+      .leaderboard-gap {
         color: var(--lilac);
         opacity: 0.5;
         text-align: center;
@@ -515,10 +532,10 @@
       }
 
       /* On a phone it becomes a disclosure near the top instead of a side
-         panel, which would otherwise sit over the road. roster.ts drives the
+         panel, which would otherwise sit over the road. leaderboard.ts drives the
          open/closed state off the same breakpoint. */
       @media (max-width: 700px) {
-        #roster {
+        #leaderboard {
           left: 16px;
           right: 16px;
           top: 76px;
@@ -528,10 +545,10 @@
         /* Nearly opaque here, unlike the desktop panel: opened, this sits over
            the wrapped logo, and at 72% the text behind it showed through and
            read as clutter. */
-        #roster details {
+        #leaderboard details {
           background: color-mix(in srgb, var(--surface) 94%, transparent);
         }
-        .roster-list {
+        .leaderboard-list {
           max-height: 38vh;
         }
       }
@@ -549,13 +566,13 @@
         <span id="dayLabel">today</span>
         <button id="nextDay" aria-label="next day">&rarr;</button>
       </div>
-      <section id="roster" aria-label="who is on this road">
+      <section id="leaderboard" aria-label="today's leaderboard">
         <details>
           <summary>
-            on this road <span class="roster-count">0</span>
+            leaderboard <span class="leaderboard-count">0</span>
           </summary>
-          <p class="roster-empty">nobody has driven this day yet</p>
-          <ul class="roster-list" hidden></ul>
+          <p class="leaderboard-empty">nobody has driven this day yet</p>
+          <ul class="leaderboard-list" hidden></ul>
         </details>
       </section>
       <div id="ghostLabels"></div>

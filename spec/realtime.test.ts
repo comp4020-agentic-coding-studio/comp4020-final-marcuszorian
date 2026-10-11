@@ -114,12 +114,22 @@ it("a finished run reaches every already-open session in under a second", async 
   }
 });
 
-it("a run on another day does not reach a session watching today", async () => {
+// Under ADR 0006 a past-day run is refused outright, so cross-day leakage is
+// now impossible by construction rather than by the seed guard in live.ts.
+// This asserts both halves: the write is declined, and nothing is pushed to a
+// session watching today.
+it("a run aimed at another day is refused and reaches nobody", async () => {
   const session = await openSession(todayUtc());
   try {
     const username = `otherday-${crypto.randomUUID().slice(0, 8)}`;
     const token = await createAccount(username);
-    await postRun(token, 77, OTHER_DAY);
+
+    const res = await fetch(new URL("/api/run-end", baseUrl), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: `token=${token}` },
+      body: JSON.stringify({ distance: 77, lane: 0, seed: OTHER_DAY }),
+    });
+    expect(res.status, await res.text()).toBe(403);
 
     await expect(
       session.waitFor((m) => m.type === "ghost" && m.ghost?.username === username, 400),

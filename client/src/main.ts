@@ -3,7 +3,7 @@ import { createCar, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepC
 import type { CarState } from "./car.ts";
 import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
-import { archiveAge, DaySelector } from "./days.ts";
+import { archiveAge, DaySelector, todayUtc } from "./days.ts";
 import { GhostLayer } from "./ghosts.ts";
 import { getAccount, postAccount, postRunEnd } from "./net.ts";
 import type { Account } from "./net.ts";
@@ -375,25 +375,36 @@ function frame(now: number): void {
     if (justCrashed) {
       running = false;
       crashedEl.hidden = false;
-      crashedTextEl.textContent = `crashed at ${Math.floor(car.distance)} m`;
+      // ADR 0006: a past day is a read-only archive, so say so at the moment
+      // it matters. Silently not saving would read as a bug — the player just
+      // crashed and would reasonably expect a trace.
+      const onToday = seed === todayUtc();
+      crashedTextEl.textContent = onToday
+        ? `crashed at ${Math.floor(car.distance)} m`
+        : `crashed at ${Math.floor(car.distance)} m — archive run, not recorded`;
 
       const burst = new CrashBurst(new THREE.Vector3(car.offset, 0.6, -car.distance));
       scene.add(burst.points);
       activeBursts.push(burst);
       if (!reducedMotion) cameraShake.add(0.9);
 
-      // Attempted unconditionally: the server owns the identity, so it is the
-      // thing that decides whether this run counts. A signed-out browser gets
-      // a 401 here and the catch below swallows it, which is exactly what the
-      // old `if (hasAccount())` gate was trying to express — except that gate
-      // was never once true, so no run was ever saved from a real browser.
-      postRunEnd(car.distance, car.offset, seed)
-        .then((result) => {
-          if (result.improved) void daySelector.load();
-        })
-        .catch(() => {
-          // best-effort — a failed save doesn't block playing again
-        });
+      // Only today's track records. The server refuses a past day with a 403
+      // regardless (ADR 0006); not sending it is the client agreeing rather
+      // than the client being trusted.
+      //
+      // Identity is still not checked here: the server owns it, so a
+      // signed-out browser gets a 401 and the catch swallows it. The old
+      // `if (hasAccount())` gate meant to express that and never once was
+      // true, so no run was ever saved from a real browser.
+      if (onToday) {
+        postRunEnd(car.distance, car.offset, seed)
+          .then((result) => {
+            if (result.improved) void daySelector.load();
+          })
+          .catch(() => {
+            // best-effort — a failed save doesn't block playing again
+          });
+      }
     }
   }
 

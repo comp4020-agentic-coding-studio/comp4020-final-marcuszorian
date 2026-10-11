@@ -23,9 +23,16 @@ So, for now, good means:
   doing against everyone else is to literally drive through where they were.
 - **A day is a real place, not just a label.** Every day gets its own road
   and its own ghosts, and — deliberately — you can go back. "Last Tuesday" is
-  a specific thing you can return to and still try to beat, the same way a
-  specific afternoon at a specific game night is a thing you can talk about
-  later. A single rolling high score would have thrown that away.
+  a specific thing you can return to and drive, the same way a specific
+  afternoon at a specific game night is a thing you can talk about later. A
+  single rolling high score would have thrown that away.
+
+  Going back is *visiting*, not competing: a past day is read-only, and a run
+  you drive there isn't recorded. That's deliberate too. If you could post a
+  new best to any date, an afternoon with a free calendar would let you
+  deposit yourself across the whole archive, and a day's ghosts would stop
+  being a record of who was actually driving that day. The record closes at
+  midnight. See `doc/adr/0006-past-days-are-read-only.md`.
 - **Showing up again is the whole point.** The spec's own test for this is
   "a stranger visits, does the thing, and finds their trace still there when
   they come back" — for this app, the most honest version of that is a

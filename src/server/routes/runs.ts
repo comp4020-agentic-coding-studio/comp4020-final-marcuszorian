@@ -28,6 +28,18 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
     return;
   }
 
+  // ADR 0006: a past day is a read-only archive. Note the two different
+  // refusals — a future date is a 400 because it is not a real day to play,
+  // while a real past date is a 403: understood, and declined. The client
+  // already declines to post here, so reaching this is either a stale tab
+  // open across UTC midnight or someone with curl; both get the same answer.
+  if (trackSeed !== todayUtc()) {
+    res.status(403).json({
+      error: "past days are read-only — a run only records against today's track",
+    });
+    return;
+  }
+
   const user = req.user!;
   const existing = db
     .prepare("SELECT distance FROM best_runs WHERE user_id = ? AND track_seed = ?")

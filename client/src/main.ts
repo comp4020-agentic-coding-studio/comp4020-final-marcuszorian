@@ -465,7 +465,11 @@ function frame(now: number): void {
   updateSun(sun, camera);
   updateGrid(grid, camera);
   updateMountains(mountains, camera);
-  ghostLayer.update(dt, camera, window.innerWidth, window.innerHeight);
+  // Name tags reach exactly as far as the road does: LOOKAHEAD_CHUNKS is the
+  // number of chunks built ahead of the car, so this is the span that is
+  // always drawn (the car sits somewhere inside its own chunk, so the real
+  // road edge is this to this + CHUNK_LENGTH).
+  ghostLayer.update(dt, camera, window.innerWidth, window.innerHeight, LOOKAHEAD_CHUNKS * CHUNK_LENGTH);
 
   // Derived from the same condition that gates stepping, rather than latched
   // at reset and crash, so the modal, a crash and a day switch all agree.

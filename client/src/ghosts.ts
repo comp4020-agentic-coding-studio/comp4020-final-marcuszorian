@@ -192,12 +192,35 @@ export class GhostLayer {
     return entry;
   }
 
-  /** Bobs each ghost gently and projects its name tag onto the HUD. Call once per frame. */
-  update(dt: number, camera: THREE.Camera, viewWidth: number, viewHeight: number): void {
+  /**
+   * Bobs each ghost gently and projects its name tag onto the HUD. Call once
+   * per frame. `labelRange` is how far ahead a name stays legible, in metres —
+   * main.ts passes the lookahead the road itself is built to, so a label can
+   * never float over road that hasn't been streamed in.
+   */
+  update(
+    dt: number,
+    camera: THREE.Camera,
+    viewWidth: number,
+    viewHeight: number,
+    labelRange: number,
+  ): void {
     this.#clock += dt;
     const projected = new THREE.Vector3();
     for (const entry of this.#entries.values()) {
       entry.mesh.position.y = 0.5 + Math.sin(this.#clock * BOB_SPEED + entry.phase) * BOB_HEIGHT;
+
+      // Distance cull, before the projection so a far ghost costs nothing.
+      // Nothing else bounded these: the mesh fades into the fog by 140m, but a
+      // label is an HTML element that knows nothing about fog, so names used to
+      // hang over the horizon with no car under them all the way out to the
+      // camera's 500m far plane. Measuring from the camera (which sits ~7m
+      // behind the car) rather than from the car errs on the near side, which
+      // is the right way to err: the label goes before the road under it does.
+      if (camera.position.z - entry.mesh.position.z > labelRange) {
+        entry.label.hidden = true;
+        continue;
+      }
 
       projected.copy(entry.mesh.position);
       projected.y += 1.3;

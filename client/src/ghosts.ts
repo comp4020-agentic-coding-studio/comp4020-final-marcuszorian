@@ -16,6 +16,7 @@ import { hashString, laneX, snapToLane } from "./track.ts";
 import { getGhosts, LiveFeed } from "./net.ts";
 import type { Ghost } from "./net.ts";
 import { palette } from "./palette.ts";
+import { createGhostCar, disposeCarModel } from "./car-model.ts";
 
 // Only used while the live socket is down, so it is tighter than the old
 // steady-state poll — this is a degraded mode, not the normal one.
@@ -24,11 +25,10 @@ const POLL_JITTER_MS = 20_000;
 const BOB_HEIGHT = 0.08;
 const BOB_SPEED = 1.4;
 
-const ghostGeometry = new THREE.BoxGeometry(1.2, 1, 2.2);
 const lavenderHsl = new THREE.Color(palette.lavender.three).getHSL({ h: 0, s: 0, l: 0 });
 
 interface GhostEntry {
-  mesh: THREE.Mesh;
+  mesh: THREE.Group;
   label: HTMLDivElement;
   phase: number;
   /** The run this ghost stands for — the leaderboard reads it; the scene doesn't. */
@@ -111,7 +111,7 @@ export class GhostLayer {
 
   #removeEntry(entry: GhostEntry): void {
     this.#scene.remove(entry.mesh);
-    (entry.mesh.material as THREE.Material).dispose();
+    disposeCarModel(entry.mesh);
     entry.label.remove();
   }
 
@@ -170,15 +170,7 @@ export class GhostLayer {
     // different named colour.
     const hueOffset = ((h % 1000) / 1000 - 0.5) * 0.08;
     const color = new THREE.Color().setHSL(lavenderHsl.h + hueOffset, Math.min(1, lavenderHsl.s + 0.1), lavenderHsl.l);
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 1.1,
-      transparent: true,
-      opacity: 0.45,
-      depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(ghostGeometry, material);
+    const mesh = createGhostCar(color);
     mesh.position.y = 0.5;
     this.#scene.add(mesh);
 

@@ -17,6 +17,8 @@ import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
+import { createPlayerCar } from "./car-model.ts";
+import { createBarrier } from "./barrier-model.ts";
 import type { Chunk } from "./track.ts";
 
 // The 3D scene and the HUD read the same sixteen colour tokens — see
@@ -142,23 +144,12 @@ roadMaterial.onBeforeCompile = (shader) => {
     `,
   );
 };
-// Lane-filling hazard barriers (ADR 0004): the box is exactly one lane wide,
-// which is also car.ts's collision half-width — what you see is what you hit.
-// Shallow in Z so a row of them reads as a gate to thread, not a wall.
-const obstacleGeometry = new THREE.BoxGeometry(LANE_WIDTH, 1, 0.8);
-const obstacleMaterial = new THREE.MeshStandardMaterial({
-  color: 0x1a0509,
-  emissive: palette.red.three,
-  emissiveIntensity: 0.85,
-});
-const carMaterial = new THREE.MeshStandardMaterial({
-  color: 0x1a0510,
-  emissive: palette.magenta.three,
-  emissiveIntensity: 0.9,
-});
-
-const carMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 2.2), carMaterial);
-scene.add(carMesh);
+// Both models keep the exact envelopes the bare boxes had — 1.2 x 2.2 for the
+// car, one lane wide and shallow in Z for the barrier — because car.ts tests
+// collisions against those numbers directly (ADR 0004: what you see is what
+// you hit). They are decoration over a frozen hitbox, not a physics change.
+const playerCar = createPlayerCar();
+scene.add(playerCar);
 
 const cameraRig = new CameraRig();
 const speedLines = new SpeedLines();
@@ -212,9 +203,9 @@ function chunkAt(index: number): THREE.Object3D {
   obj.userData.roadGeometry = geometry;
 
   for (const obstacle of chunk.obstacles) {
-    const mesh = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
-    mesh.position.set(obstacle.x, 0.5, obstacle.z);
-    obj.add(mesh);
+    const barrier = createBarrier();
+    barrier.position.set(obstacle.x, 0.5, obstacle.z);
+    obj.add(barrier);
   }
 
   scene.add(obj);
@@ -418,8 +409,8 @@ function frame(now: number): void {
   const x = car.offset;
   const z = -car.distance;
   const speed = speedAt(car.distance);
-  carMesh.position.set(x, 0.5, z);
-  cameraRig.updateCarBank(carMesh, running ? slide : 0, dt);
+  playerCar.position.set(x, 0.5, z);
+  cameraRig.updateCarBank(playerCar, running ? slide : 0, dt);
   cameraRig.updateCamera(
     camera,
     dt,

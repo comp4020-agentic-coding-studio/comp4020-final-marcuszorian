@@ -47,6 +47,12 @@ export type PaletteKey = keyof typeof palette;
 // don't belong in the table above — the road needs something between `void`
 // and `surface` to read as a dark material rather than a hole in the world.
 export const roadSurface = token("#201936");
+// Same reasoning one step lighter, for the solid objects standing *on* the
+// road: the car hull and the barrier frames. `void` would be correct for "an
+// unlit dark body", but it's also the background and the fog colour, so a hull
+// painted in it reads as a silhouette-shaped hole rather than a dark object
+// catching the rim light.
+export const gunmetal = token("#2e2a3f");
 
 /** Writes every token as a `--<key>` custom property on `:root`. */
 export function applyPaletteCssVars(root: HTMLElement = document.documentElement): void {

@@ -9,6 +9,10 @@ const EPS = 1e-4;
 const STEP = 0.125; // 16th note at 120 bpm; tempo stays constant, speed binds to timbre
 const LOOKAHEAD = 0.2;
 const ROOT_HZ = 55;
+// Nearness under this is inaudible (n*n*0.5 is below -114dB), and how long it
+// has to stay there before the ghost pad is unplugged. See update().
+const GHOST_FLOOR = 0.002;
+const GHOST_HOLD = 1.0;
 const PATTERN = [0, 0, 12, 0, 0, 0, 12, 0, 0, 0, 12, 0, 0, 10, 12, 7];
 
 type Src = OscillatorNode | AudioBufferSourceNode;
@@ -50,6 +54,9 @@ export class AudioEngine {
   #phaseLfo!: OscillatorNode;
   #phaseDepth!: GainNode;
   #ghostGain!: GainNode;
+  #ghostHp!: BiquadFilterNode;
+  #ghostLive = true; // is ghostHp -> ghostGain patched in? built patched
+  #ghostQuiet = 0; // seconds nearness has sat at/below GHOST_FLOOR
   #sources: Src[] = [];
   #muted = false;
   #driving = false;
@@ -225,16 +232,19 @@ export class AudioEngine {
     prev.connect(this.#bedGain);
     this.#bedGain.connect(this.#aged);
 
-    // Ghost: always running, silent until nearness opens its gain. No low end.
-    // A detuned sine/triangle cluster stands in for a Mellotron choir sample.
+    // Ghost: silent until nearness opens its gain, and unplugged from ghostGain
+    // entirely when no ghost is near (see update). No low end. A detuned
+    // sine/triangle cluster stands in for a Mellotron choir sample.
     this.#ghostGain = ctx.createGain();
     this.#ghostGain.gain.value = 0;
-    const ghostHp = ctx.createBiquadFilter();
+    const ghostHp = (this.#ghostHp = ctx.createBiquadFilter());
     ghostHp.type = "highpass";
     ghostHp.frequency.value = 500;
     const hall = ctx.createConvolver();
     hall.buffer = hallIR; // fully wet: only the convolved signal is connected
     ghostHp.connect(this.#ghostGain).connect(hall).connect(this.#aged);
+    this.#ghostLive = true; // a rebuild after dispose() starts patched again
+    this.#ghostQuiet = 0;
     [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98].forEach((f, i) => {
       const o = osc(i % 2 ? "triangle" : "sine", f * (1 + (i - 2.5) * 0.002));
       const g = ctx.createGain();
@@ -292,20 +302,55 @@ export class AudioEngine {
     this.#bedGain.gain.setTargetAtTime(driving ? 0.085 : 0, ctx.currentTime, 0.2);
   }
 
-  update(_dt: number, speed: number, nearness: number): void {
+  update(dt: number, speed: number, nearness: number): void {
     const ctx = this.#ctx;
-    if (!ctx || this.#muted) return;
+    if (!ctx) return;
     const now = ctx.currentTime;
     const s = Math.max(0, Math.min(1, speed));
-    const n = Math.max(0, Math.min(1, nearness));
+    // Muting only pulls master's gain to 0, which silences the output without
+    // sparing a single node the work — so for the gate below, muted IS "nobody
+    // can hear this", and the pad should unplug. Without this the early return
+    // would freeze the gate in whatever state muting caught it in: mute while a
+    // ghost is alongside and the most expensive part of the graph stays patched
+    // in, inaudibly, for the rest of the session.
+    const n = this.#muted ? 0 : Math.max(0, Math.min(1, nearness));
 
     const cutoff = 120 * Math.pow(7000 / 120, s);
     this.#lp1.frequency.setTargetAtTime(cutoff, now, 0.08);
     this.#lp2.frequency.setTargetAtTime(cutoff, now, 0.08);
     this.#phaseLfo.frequency.setTargetAtTime(0.2 + s * 2.3, now, 0.2);
     this.#ghostGain.gain.setTargetAtTime(n * n * 0.5, now, 0.15);
+    // A gain of 0 buys nothing: setTargetAtTime only approaches zero
+    // asymptotically, so ghostGain keeps emitting non-silence and the 5s stereo
+    // hall keeps convolving it. The pad (18 oscillators, 6 gains, 12 detune
+    // LFOs, a highpass, the convolution) measured 27.3 of the 40.7% mean
+    // renderCapacity — two thirds of all audio CPU, for something nobody hears
+    // outside 14m, which is most of a run. Cutting the single ghostHp ->
+    // ghostGain edge orphans that entire cluster from ctx.destination, so Chrome
+    // stops pulling it at all; the convolver stays wired downstream and so rings
+    // its tail out, then costs nothing once its input has been silent that long.
+    // Patch back the moment nearness lifts off the floor — that must never lag
+    // the audible ramp — but delay the cut by GHOST_HOLD so the 0.15s gain ramp
+    // has rung down and the tail is not chopped. The reconnect needs no fade of
+    // its own: the gain is already ~0 at that instant and ramps up from there.
+    if (n > GHOST_FLOOR) {
+      this.#ghostQuiet = 0;
+      if (!this.#ghostLive) {
+        this.#ghostHp.connect(this.#ghostGain);
+        this.#ghostLive = true;
+      }
+    } else if (this.#ghostLive) {
+      this.#ghostQuiet += dt;
+      if (this.#ghostQuiet >= GHOST_HOLD) {
+        this.#ghostHp.disconnect(this.#ghostGain);
+        this.#ghostLive = false;
+      }
+    }
 
-    if (!this.#driving) return;
+    // Past the gate, muting means the same as before: no notes get queued. The
+    // automation above is cheap and keeps the filters tracking, so unmuting
+    // resumes mid-run instead of snapping from stale values.
+    if (this.#muted || !this.#driving) return;
     // A backgrounded tab or long hitch leaves the clock far ahead of us;
     // resync instead of firing a burst of stale notes.
     if (this.#nextNote < now - 0.05) this.#nextNote = now + 0.02;

@@ -318,9 +318,20 @@ export interface MovingPattern {
 // All specs stay centred on lane 0: amplitude == LANE_WIDTH already swings a
 // full lane either side (x in [-LANE_WIDTH, +LANE_WIDTH]), covering all three
 // lanes without ever swinging a centre-±1 sweep off the road.
-const SWEEP_WAVELENGTH = 14; // metres of travel per full lateral cycle
+// Lateral speed in time is amplitude * (2π·carSpeed / wavelength) — doubling
+// wavelength halves how fast the sweep reads at any given approach speed,
+// without touching `(seed, distance)` purity (ADR 0012).
+const SWEEP_WAVELENGTH = 28; // metres of travel per full lateral cycle
 const SWEEP_AMPLITUDE = LANE_WIDTH;
 
+// No row may carry two specs centred on the same lane — two barriers
+// crossing back and forth through the same slot read as one barrier
+// glitching, not two obstacles, and doubling up there was never actually
+// giving a player two things to dodge (both specs occupy or vacate the lane
+// together half the time). A second barrier bound to a lane instead comes
+// *after* the first one, a plain row further down the playlist — "behind it,"
+// never "on it at the same time." `movingPatternIsSolvable` below asserts
+// this the same way it already asserts a shared wavelength.
 export const MOVING_PATTERNS: readonly MovingPattern[] = [
   {
     name: "solo-sweep",
@@ -330,36 +341,22 @@ export const MOVING_PATTERNS: readonly MovingPattern[] = [
     name: "solo-sweep-offset",
     rows: [[{ center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: Math.PI }]],
   },
-  // Mirror pair: x2 = -x1 always, so the two can only ever share a lane when
-  // both are near centre — leaving the outer two lanes free — and are never
-  // simultaneously at the same outer lane. Proven by construction, and
-  // re-checked below by the same sampled walk every pattern here goes through.
-  {
-    name: "mirror-pair",
-    rows: [
-      [
-        { center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: 0 },
-        { center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: Math.PI },
-      ],
-    ],
-  },
-  // Quarter-cycle offset pair — less obviously solvable by hand than the
-  // mirror pair, which is exactly what the sampled check below is for.
-  {
-    name: "quarter-pair",
-    rows: [
-      [
-        { center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: 0 },
-        { center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: Math.PI / 2 },
-      ],
-    ],
-  },
-  // Two solo sweeps back to back — the moving equivalent of a slalom.
+  // Two solo sweeps back to back — the moving equivalent of a slalom. Same
+  // lane, but staggered in distance: never both sweeping that lane at once.
   {
     name: "sweep-train",
     rows: [
       [{ center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: 0 }],
       [{ center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: Math.PI }],
+    ],
+  },
+  // Three in a row — the long version of the same idea.
+  {
+    name: "sweep-train-long",
+    rows: [
+      [{ center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: 0 }],
+      [{ center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: Math.PI }],
+      [{ center: 0, amplitude: SWEEP_AMPLITUDE, wavelength: SWEEP_WAVELENGTH, phase: 0 }],
     ],
   },
 ];
@@ -392,6 +389,13 @@ function occupiedLanesAt(row: MovingRow, phaseDistance: number): Set<Lane> {
 export function movingPatternIsSolvable(pattern: MovingPattern): boolean {
   for (const row of pattern.rows) {
     if (row.length === 0) continue;
+    const lanes = new Set(row.map((spec) => spec.center));
+    if (lanes.size !== row.length) {
+      // Two barriers bound to the same lane at once is never two things to
+      // dodge — only ever a second barrier reads as "give the player more to
+      // navigate," and that's a later row (behind it), not the same one.
+      throw new Error(`${pattern.name}: a row may not put two moving barriers on the same lane`);
+    }
     const wavelength = row[0]!.wavelength;
     if (row.some((spec) => spec.wavelength !== wavelength)) {
       throw new Error(`${pattern.name}: every spec in a row must share one wavelength to sample one period`);

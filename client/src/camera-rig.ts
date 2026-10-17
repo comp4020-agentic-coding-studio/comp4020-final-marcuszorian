@@ -33,15 +33,41 @@ export class CameraRig {
    * Forgets where the camera was, so the next updateCamera snaps into place
    * instead of easing there.
    *
-   * Needed since the title screen: its hero shot parks the camera in front of
-   * the car, and without this, starting a race would smoothly fly the camera
-   * from that portrait back to the chase position over a visible half-second,
-   * with the run already counting distance. A cut is correct here — the two
-   * shots are different places, not a move between them.
+   * Used when the two shots are genuinely different places rather than a move
+   * between them — returning from a race to the attract demo, say. Starting a
+   * race does the opposite and deliberately flies between them; see
+   * `client/src/race-start.ts`.
    */
   reset(): void {
     this.#initialized = false;
     this.#bank = 0;
+  }
+
+  /**
+   * Places the camera exactly, with no lag, and leaves the rig primed to
+   * continue smoothly from there.
+   *
+   * The race-start transition drives the camera itself for its duration, and
+   * then hands control back. Without seeding `#smoothedPos` the rig would
+   * believe the camera was still wherever it was before the transition and
+   * yank it back on the first frame after — undoing the whole move in a
+   * single frame.
+   */
+  placeAt(camera: THREE.PerspectiveCamera, position: THREE.Vector3, lookAt: THREE.Vector3, fov: number): void {
+    this.#smoothedPos.copy(position);
+    this.#initialized = true;
+    this.#fov = fov;
+    camera.position.copy(position);
+    camera.lookAt(lookAt);
+    if (Math.abs(camera.fov - fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  /** The FOV the chase camera wants at `speed` — what a transition eases toward. */
+  static chaseFov(speed: number): number {
+    return BASE_FOV + (MAX_FOV - BASE_FOV) * Math.min(1, speed / FOV_SPEED_REF);
   }
 
   /**

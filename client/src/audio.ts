@@ -59,7 +59,8 @@ export class AudioEngine {
   #ghostQuiet = 0; // seconds nearness has sat at/below GHOST_FLOOR
   #sources: Src[] = [];
   #muted = false;
-  #driving = false;
+  /** Whether the score (bed + bassline) is playing. See setMusic. */
+  #music = false;
   #nextNote = 0;
   #step = 0;
   #age = 0;
@@ -271,6 +272,13 @@ export class AudioEngine {
 
     this.#nextNote = ctx.currentTime + 0.05;
     this.setArchiveAge(this.#age);
+    // Re-apply the driving state the same way, and for the same reason: both
+    // can be set before a gesture ever unlocks the context, and both live in
+    // node automation that did not exist until just now. The music starts on
+    // the title screen, so by the time a returning player's first click builds
+    // this graph, #music has usually been true for a while — without this
+    // the bed stays at zero until something happens to toggle it.
+    this.setMusic(this.#music);
   }
 
   setMuted(muted: boolean): void {
@@ -294,12 +302,22 @@ export class AudioEngine {
     this.#hissGain.gain.setTargetAtTime(a * 0.025, t, tc);
   }
 
-  setDriving(driving: boolean): void {
-    this.#driving = driving;
+  /**
+   * Starts or stops the music — the phaser bed and the sixteenth-note bassline
+   * that together are the score.
+   *
+   * This used to be `setDriving`, and was true only during a live run. It is
+   * no longer tied to driving at all: the music now plays under the title
+   * screen and its menus as well, so the name had to stop claiming otherwise.
+   * What still tracks the car is TIMBRE, not whether anything sounds —
+   * `update()` opens the engine filter with speed either way.
+   */
+  setMusic(on: boolean): void {
+    this.#music = on;
     const ctx = this.#ctx;
     if (!ctx) return;
-    if (driving) this.#nextNote = Math.max(this.#nextNote, ctx.currentTime + 0.05);
-    this.#bedGain.gain.setTargetAtTime(driving ? 0.085 : 0, ctx.currentTime, 0.2);
+    if (on) this.#nextNote = Math.max(this.#nextNote, ctx.currentTime + 0.05);
+    this.#bedGain.gain.setTargetAtTime(on ? 0.085 : 0, ctx.currentTime, 0.2);
   }
 
   update(dt: number, speed: number, nearness: number): void {
@@ -350,7 +368,7 @@ export class AudioEngine {
     // Past the gate, muting means the same as before: no notes get queued. The
     // automation above is cheap and keeps the filters tracking, so unmuting
     // resumes mid-run instead of snapping from stale values.
-    if (this.#muted || !this.#driving) return;
+    if (this.#muted || !this.#music) return;
     // A backgrounded tab or long hitch leaves the clock far ahead of us;
     // resync instead of firing a burst of stale notes.
     if (this.#nextNote < now - 0.05) this.#nextNote = now + 0.02;
@@ -501,7 +519,7 @@ export class AudioEngine {
   }
 
   dispose(): void {
-    this.#driving = false;
+    this.#music = false;
     const ctx = this.#ctx;
     if (!ctx) return;
     for (const s of this.#sources) {

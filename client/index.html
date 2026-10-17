@@ -343,16 +343,58 @@
         box-shadow: 0 0 26px rgba(5, 217, 232, 0.55);
       }
 
-      /* ---- settings: one gear, bottom-right, on every screen ----
+      /* ---- pause: top-right, during a run only ----
+         Sized and styled as the gear's twin, because they are the same kind
+         of thing (a control over the session rather than over the car) and
+         they swap places: the gear hides while you drive, this appears, and
+         on pause they trade back. */
+      #pauseButton {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        cursor: pointer;
+        color: var(--lilac);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        border: 1px solid color-mix(in srgb, var(--lilac) 40%, transparent);
+        backdrop-filter: blur(6px);
+        transition:
+          color 0.15s ease,
+          box-shadow 0.15s ease,
+          border-color 0.15s ease;
+      }
+      #pauseButton:hover {
+        color: var(--laserCyan);
+        border-color: color-mix(in srgb, var(--cyan) 60%, transparent);
+        box-shadow: 0 0 16px rgba(5, 217, 232, 0.4);
+      }
+      #pauseButton svg {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+      }
+
+      /* ---- settings: one gear, bottom-right ----
          These two toggles used to be standalone pills parked permanently over
          the road. Neither setting changed — only where you reach it. Living
          outside #hud is deliberate: #hud is hidden on every screen except the
-         race, and settings has to outlive that. */
+         race, and settings has to outlive that.
+
+         Hidden while actually driving (main.ts toggles it with the screen):
+         mid-run is the one moment nobody is adjusting a setting, and the
+         corner is better spent on nothing at all. Pausing brings it back. */
       #settings {
         position: fixed;
         right: 16px;
         bottom: 16px;
         z-index: 3; /* above the title/destination screens, which are z-index 2 */
+      }
+      #settings[hidden] {
+        display: none;
       }
       #settingsButton {
         display: grid;
@@ -1002,6 +1044,15 @@
           <ul class="leaderboard-list" hidden></ul>
         </details>
       </section>
+      <!-- Top-right during a run. Escape does the same thing, but a key is
+           not discoverable and does not exist on a phone, which is where a
+           pause is most likely to be needed. -->
+      <button id="pauseButton" type="button" aria-label="pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <rect x="6" y="5" width="4" height="14" rx="1" />
+          <rect x="14" y="5" width="4" height="14" rx="1" />
+        </svg>
+      </button>
       <div id="ghostLabels"></div>
       <div id="crashed" class="panel" hidden>
         <div id="crashedText"></div>

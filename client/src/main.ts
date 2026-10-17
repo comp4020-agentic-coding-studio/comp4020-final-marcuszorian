@@ -29,9 +29,11 @@ import {
   createAttractKeyLight,
   createHeadlights,
   driveAttract,
+  FRAME_SHIFT as ATTRACT_FRAME_SHIFT,
   setHeadlightsActive,
   updateAttractKeyLight,
 } from "./attract.ts";
+import { RaceStartTransition } from "./race-start.ts";
 import { ScreenManager, showsAttract, simulates } from "./screens.ts";
 import type { Destination, Screen } from "./screens.ts";
 import { SettingsMenu } from "./settings.ts";
@@ -62,6 +64,7 @@ const usernameInput = document.getElementById("username") as HTMLInputElement;
 const usernameError = document.getElementById("usernameError")!;
 const ghostLabelsEl = document.getElementById("ghostLabels")!;
 const leaderboardEl = document.getElementById("leaderboard")!;
+const pauseButton = document.getElementById("pauseButton") as HTMLButtonElement;
 const hudEl = document.getElementById("hud")!;
 const titleEl = document.getElementById("titleScreen")!;
 const pauseEl = document.getElementById("pauseMenu")!;
@@ -204,6 +207,9 @@ const attractKey = createAttractKeyLight();
 scene.add(attractKey, attractKey.target);
 
 const cameraRig = new CameraRig();
+// The swing from the attract camera into the chase camera when Start is
+// pressed. See race-start.ts — it drives the camera itself for its duration.
+const raceStart = new RaceStartTransition();
 const speedLines = new SpeedLines();
 scene.add(speedLines.mesh);
 const cameraShake = new CameraShake();
@@ -420,17 +426,26 @@ function onScreenChange(next: Screen, previous?: Screen): void {
   grid.visible = true;
   mountains.visible = true;
 
-  // CameraRig smooths toward wherever it last was. Between the demo's
-  // three-quarter rear and the race's chase cam that is a cut, not a move, so
-  // the smoothing is reset rather than allowed to swing across the scene.
-  // The frustum offset has to go too, or the whole road renders shifted left
-  // for the entire run.
+  // The pause control and the settings gear trade places. Driving is the one
+  // moment nobody is adjusting a setting, and it is the only moment there is
+  // a run to pause — so each appears exactly when the other is useless.
+  pauseButton.hidden = next !== "racing";
+  settingsEl.hidden = next === "racing";
+  // A panel left open as a race starts would hang over the road with no
+  // button under it to close it.
+  if (next === "racing") settings.close();
+
   if (!demo) {
-    cameraRig.reset();
+    // startRace() runs the camera through a transition instead of cutting, so
+    // the rig must NOT be reset here — that would discard the pose the
+    // transition is easing from and snap to the chase shot, which is the jump
+    // cut this replaces. Pausing is the other way in here, and there the
+    // camera is already exactly where it belongs.
     clearAttractFraming(camera);
   } else if (previous !== undefined && !showsAttract(previous)) {
     // Coming back from a run (Home, or a crash): the car is sitting wherever
     // it died, so the demo starts over rather than resuming someone's wreck.
+    raceStart.cancel();
     cameraRig.reset();
     startAttract();
   }
@@ -440,12 +455,18 @@ function onScreenChange(next: Screen, previous?: Screen): void {
   if (next === "shop") void shop.refresh();
   if (next === "cosmetics") void cosmetics.refresh();
 
-  // Any screen that isn't a live race means the engine isn't driving.
-  if (next !== "racing") audio.setDriving(false);
+  // The music plays everywhere except a crashed run — the title screen, the
+  // menus, and the road all share one continuous score, so pressing Start
+  // does not interrupt it. A crash is the one place silence is the point.
+  audio.setMusic(next !== "racing" || running);
 }
 
 function startRace(): void {
   audio.unlock();
+  // Captured BEFORE the screen changes, while the attract camera is still the
+  // one on screen: the transition eases from where the camera actually is,
+  // not from where the demo's pose would have put it a frame ago.
+  raceStart.begin(camera, attractLookAt(car, cameraLook), ATTRACT_FRAME_SHIFT);
   resetRun();
   screens.go("racing");
 }
@@ -570,9 +591,15 @@ const endSwipe = (e: PointerEvent): void => {
 window.addEventListener("pointerup", endSwipe);
 window.addEventListener("pointercancel", endSwipe);
 
+pauseButton.addEventListener("click", () => pauseRace());
+
 restartButton.addEventListener("click", () => {
   audio.unlock();
   resetRun();
+  // Already in the chase shot, so no transition — this is a restart, not an
+  // arrival. onScreenChange is a no-op here too: the screen never left
+  // "racing" when the car crashed.
+  audio.setMusic(true);
   screens.go("racing");
 });
 crashedHomeButton.addEventListener("click", () => goHome());
@@ -738,7 +765,7 @@ usernameForm.addEventListener("submit", (e) => {
 // ---- game loop ----
 let lastTime = performance.now();
 let elapsed = 0;
-let audioDriving = false;
+let audioMusic = false;
 // Reused every frame rather than allocated: this runs 60 times a second, and
 // two fresh Vector3s per frame is garbage the collector has to chase.
 const cameraTarget = new THREE.Vector3();
@@ -893,6 +920,30 @@ function frame(now: number): void {
     applyAttractFraming(camera, window.innerWidth, window.innerHeight);
     camera.updateProjectionMatrix();
     // No cameraShake here: a jolt behind a menu reads as a glitch.
+  } else if (raceStart.active) {
+    // Swinging from the demo's shot into the chase shot. The target is
+    // recomputed every frame rather than fixed at the moment Start was
+    // pressed, because the car is still driving the whole way through — ease
+    // toward a stale pose and the camera lands behind where the car now is.
+    cameraRig.updateCarBank(playerCar, driving() ? slide : 0, dt);
+    const stillGoing = raceStart.update(
+      dt,
+      camera,
+      {
+        position: cameraTarget.set(x, 4.5, z + 7),
+        lookAt: cameraLook.set(x, 0.5, z - 10),
+        fov: CameraRig.chaseFov(speed),
+        frameShift: 0, // the chase shot is centred
+      },
+      window.innerWidth,
+      window.innerHeight,
+    );
+    if (!stillGoing) {
+      // Hand back to the rig, seeded with where the transition actually
+      // ended. Without this the rig still believes the camera is wherever it
+      // was before Start and yanks it back on the very next frame.
+      cameraRig.placeAt(camera, raceStart.position, raceStart.lookAt, camera.fov);
+    }
   } else {
     // Banking follows the slide only while time is passing — a paused car
     // holds its roll instead of unwinding it, so resuming picks up mid-slide
@@ -918,28 +969,30 @@ function frame(now: number): void {
   // road edge is this to this + CHUNK_LENGTH).
   ghostLayer.update(dt, camera, window.innerWidth, window.innerHeight, LOOKAHEAD_CHUNKS * CHUNK_LENGTH);
 
-  // Derived from the same condition that gates stepping, rather than latched
-  // at reset and crash, so a pause, a crash, the username prompt and a day
-  // switch all agree without each having to remember to say so.
+  // The score plays under the title screen, its menus and the road alike —
+  // one continuous piece of music, so pressing Start does not interrupt it
+  // and arriving back at the menu does not restart it. Silent only on a
+  // crashed run, where the wreck is the point.
   //
-  // The attract demo is deliberately SILENT — the engine note stays off while
-  // the menu is up. A car droning behind a menu someone is reading is the
-  // thing most likely to make them reach for mute, and the sound is the one
-  // part of the game that is better met when you press start.
-  const isDriving = driving();
-  if (isDriving !== audioDriving) {
-    audioDriving = isDriving;
-    audio.setDriving(isDriving);
+  // Derived every frame rather than latched at each transition, so a pause, a
+  // crash, the username prompt and a day switch all agree without each having
+  // to remember to say so.
+  const wantMusic = !(screens.is("racing") && !running);
+  if (wantMusic !== audioMusic) {
+    audioMusic = wantMusic;
+    audio.setMusic(wantMusic);
   }
 
   const speedFactor = Math.max(0, Math.min(1.5, (speed - 9) / 30));
   if (speedLines.mesh.visible) speedLines.update(dt, speedFactor, camera.position);
   // The engine filter and the ghost swell both want 0..1; speedFactor runs to
   // 1.5 so the speed lines keep thickening past the point the audio tops out.
+  // Ghost proximity is a RUN's business: the demo drives past other people's
+  // traces constantly and swelling a pad for each would be meaningless.
   audio.update(
     dt,
     Math.min(1, speedFactor),
-    isDriving ? ghostLayer.nearness(car.distance, car.offset) : 0,
+    driving() ? ghostLayer.nearness(car.distance, car.offset) : 0,
   );
 
   for (let i = activeBursts.length - 1; i >= 0; i--) {

@@ -158,7 +158,7 @@ const LOOK_HEIGHT = 1.25;
  * above exactly as framed. Larger than the parked portrait's shift was,
  * because the menu it has to clear is now considerably wider.
  */
-const FRAME_SHIFT = 0.3;
+export const FRAME_SHIFT = 0.3;
 /**
  * The portrait equivalent, as a fraction of viewport height.
  *

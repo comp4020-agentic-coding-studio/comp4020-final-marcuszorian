@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createCar, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
+import { createCar, isDrifting, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
 import type { CarState } from "./car.ts";
 import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
@@ -16,7 +16,8 @@ import { Leaderboard } from "./leaderboard.ts";
 import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
-import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
+import { CHUNK_LENGTH, LANE_WIDTH, movingBarrierX, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
+import type { MotionParams } from "./track.ts";
 import { createPlayerCar, setPlayerGhostly, setPlayerTrim } from "./car-model.ts";
 import { Cosmetics } from "./cosmetics.ts";
 import { CrewScreen } from "./crew-screen.ts";
@@ -40,7 +41,8 @@ import { SettingsMenu } from "./settings.ts";
 import { Shop } from "./shop.ts";
 import { skinColor } from "./skins.ts";
 import { TitleScreen } from "./title-screen.ts";
-import { createBarrier } from "./barrier-model.ts";
+import { createBarrier, createMovingBarrier } from "./barrier-model.ts";
+import { createOilSpill, type OilDrift } from "./oil-model.ts";
 import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
 
@@ -55,6 +57,7 @@ const BEHIND_CHUNKS = 1;
 // ---- DOM ----
 const scoreEl = document.getElementById("score")!;
 const crashedEl = document.getElementById("crashed")!;
+const oilPopupEl = document.getElementById("oilPopup")!;
 const crashedTextEl = document.getElementById("crashedText")!;
 const restartButton = document.getElementById("restart") as HTMLButtonElement;
 const crashedHomeButton = document.getElementById("crashedHome") as HTMLButtonElement;
@@ -289,11 +292,32 @@ function chunkAt(index: number): THREE.Object3D {
   // reuse one global geometry+material, same as the player car).
   obj.userData.roadGeometry = geometry;
 
+  // Moving-barrier meshes and oil drifts need a per-frame touch that a plain
+  // scene traversal would be wasteful to discover by type every frame, so
+  // this chunk remembers exactly which of its children need it (doc/adr/0012).
+  const movingMeshes: { mesh: THREE.Object3D; lane: number; motion: MotionParams }[] = [];
+  const oilDrifts: OilDrift[] = [];
+
   for (const obstacle of chunk.obstacles) {
-    const barrier = createBarrier();
-    barrier.position.set(obstacle.x, 0.5, obstacle.z);
-    obj.add(barrier);
+    if (obstacle.kind === "barrier") {
+      const barrier = createBarrier();
+      barrier.position.set(obstacle.x, 0.5, obstacle.z);
+      obj.add(barrier);
+    } else if (obstacle.kind === "moving-barrier" && obstacle.motion) {
+      const movingBarrier = createMovingBarrier();
+      movingBarrier.position.set(obstacle.x, 0.5, obstacle.z);
+      obj.add(movingBarrier);
+      movingMeshes.push({ mesh: movingBarrier, lane: obstacle.lane, motion: obstacle.motion });
+    } else if (obstacle.kind === "oil") {
+      const spill = createOilSpill();
+      spill.group.position.set(obstacle.x, 0.02, obstacle.z);
+      obj.add(spill.group);
+      oilDrifts.push(spill.drift);
+    }
   }
+
+  obj.userData.movingMeshes = movingMeshes;
+  obj.userData.oilDrifts = oilDrifts;
 
   scene.add(obj);
   chunkObjects.set(index, obj);
@@ -302,6 +326,22 @@ function chunkAt(index: number): THREE.Object3D {
 
 function disposeChunk(obj: THREE.Object3D): void {
   (obj.userData.roadGeometry as THREE.BufferGeometry | undefined)?.dispose();
+  for (const drift of (obj.userData.oilDrifts as OilDrift[] | undefined) ?? []) drift.dispose();
+}
+
+/** Repositions every resident moving-barrier mesh's `x` from the car's own
+ * `distance` (doc/adr/0012) and advances every resident oil spill's ambient
+ * drift loop — called once a frame from `stepAndStream` with the distance
+ * already computed that frame, never from wall-clock time. */
+function updateHazards(distance: number, dt: number): void {
+  for (const obj of chunkObjects.values()) {
+    for (const { mesh, lane, motion } of (obj.userData.movingMeshes as
+      | { mesh: THREE.Object3D; lane: number; motion: MotionParams }[]
+      | undefined) ?? []) {
+      mesh.position.x = movingBarrierX(lane as -1 | 0 | 1, motion, distance);
+    }
+    for (const drift of (obj.userData.oilDrifts as OilDrift[] | undefined) ?? []) drift.update(dt);
+  }
 }
 
 function pruneChunks(currentIndex: number): void {
@@ -327,6 +367,7 @@ function resetRun(): void {
   car = createCar();
   running = true;
   crashedEl.hidden = true;
+  oilPopupEl.hidden = true;
   setPlayerGhostly(playerCar, false);
   speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
@@ -351,6 +392,7 @@ function startAttract(): void {
   slide = 0;
   attractRespawn = 0;
   crashedEl.hidden = true;
+  oilPopupEl.hidden = true;
   setPlayerGhostly(playerCar, false);
   // The demo is the game's own showreel, so it gets the speed lines too —
   // the one thing reducedMotion still turns off.
@@ -509,6 +551,11 @@ function openDestination(destination: Destination): void {
 // one place the blip fires.
 function steer(dir: -1 | 1): void {
   if (!driving()) return;
+  // Oil's forced drift overrides player input for its whole window — the
+  // same guard shape as `car.crashed` stopping input elsewhere (doc/adr/0012).
+  // shiftLane() already no-ops during a drift; this just keeps the lane-shift
+  // blip from firing for a tap that visibly did nothing.
+  if (isDrifting(car)) return;
   const before = car.lane;
   shiftLane(car, dir);
   // Only when the car actually moved: shiftLane refuses past the outer lanes,
@@ -793,6 +840,7 @@ function stepAndStream(dt: number): boolean {
   const nextIndex = Math.floor(car.distance / CHUNK_LENGTH);
   for (let i = nextIndex; i <= nextIndex + LOOKAHEAD_CHUNKS; i++) chunkAt(i);
   pruneChunks(nextIndex);
+  updateHazards(car.distance, dt);
 
   return justCrashed;
 }
@@ -844,10 +892,16 @@ function frame(now: number): void {
     const justCrashed = stepAndStream(dt);
 
     scoreEl.textContent = `${Math.floor(car.distance)} m`;
+    // Pure readout of car.ts's own drift state — no new state here, just a
+    // `hidden` toggle mirroring how `#crashed` is shown (doc/adr/0012).
+    oilPopupEl.hidden = !isDrifting(car);
 
     if (justCrashed) {
       running = false;
       crashedEl.hidden = false;
+      // A drift that carried the car into a barrier can still be mid-window
+      // when the crash lands; the crashed panel is the one that matters now.
+      oilPopupEl.hidden = true;
       setPlayerGhostly(playerCar, true);
       // The rushing-past streaks read as the car's own speed; a dead car
       // isn't going anywhere, so they cut out the instant it crashes rather

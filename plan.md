@@ -225,12 +225,12 @@ redirect:
       collision and for rendering.
 
 ### Phase 5: Integration (`main.ts`)
-- [ ] `chunkAt` builds moving-barrier and oil meshes alongside static
+- [x] `chunkAt` builds moving-barrier and oil meshes alongside static
       barriers; moving-barrier meshes get their `x` updated every frame from
       `stepAndStream`.
-- [ ] A new transient HUD pop-up, shown for the forced-drift duration,
+- [x] A new transient HUD pop-up, shown for the forced-drift duration,
       mirroring how `#crashed` is shown/hidden today.
-- [ ] Keydown handler ignores `shiftLane` while a forced drift is active,
+- [x] Keydown handler ignores `shiftLane` while a forced drift is active,
       next to the existing `car.crashed` guard.
 
 ### Phase 6: Attract mode (`attract.ts`)

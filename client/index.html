@@ -311,6 +311,27 @@
         text-align: center;
         padding: 28px 32px;
       }
+
+      /* Oil's forced-drift readout (doc/adr/0012): parked above the crashed
+         panel's spot rather than on top of it — the two states are mutually
+         exclusive (oil never crashes the car by itself) but sharing a position
+         would make a future bug where both show at once invisible. */
+      #oilPopup {
+        position: absolute;
+        top: 28%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        padding: 10px 22px;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--laserCyan);
+        text-shadow:
+          0 0 2px rgba(10, 0, 0, 0.9),
+          0 0 8px var(--magenta),
+          0 0 20px rgba(255, 42, 109, 0.5);
+        border-color: color-mix(in srgb, var(--magenta) 45%, transparent);
+      }
       #crashedText {
         font-size: 20px;
         font-weight: 700;
@@ -1054,6 +1075,7 @@
         </svg>
       </button>
       <div id="ghostLabels"></div>
+      <div id="oilPopup" class="panel" hidden>slick! hold on</div>
       <div id="crashed" class="panel" hidden>
         <div id="crashedText"></div>
         <div class="crashed-actions">

@@ -209,9 +209,9 @@ redirect:
       wall-clock time.
 
 ### Phase 3: Models (`barrier-model.ts`, new `oil-model.ts`)
-- [ ] `createMovingBarrier()`: reuse `createBarrier`'s frame/panel/stud/edge
+- [x] `createMovingBarrier()`: reuse `createBarrier`'s frame/panel/stud/edge
       construction, recoloured per the concept art, with a slider rig added.
-- [ ] `createOilSpill()`: flat procedural-shader splatter in the existing
+- [x] `createOilSpill()`: flat procedural-shader splatter in the existing
       palette, plus a continuous low-rate particle drift reusing
       `CrashBurst`'s point-sprite approach.
 

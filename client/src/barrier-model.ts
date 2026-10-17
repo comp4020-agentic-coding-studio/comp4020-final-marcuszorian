@@ -149,3 +149,76 @@ export function createBarrier(): THREE.Group {
   );
   return group;
 }
+
+// ---- moving barrier (doc/adr/0012, concept art Obstacle 01) ----
+// Same frame/stud/edge construction as the static barrier — it's the same
+// physical object on a slider rig, not a different barrier — recoloured to
+// the hotter orange/red banding the concept art shows so it reads as the
+// "this one moves" variant at a glance, before a player even sees it sweep.
+const movingPanelFragment = /* glsl */ `
+  precision highp float;
+  #include <fog_pars_fragment>
+  uniform vec3 uOrange;
+  uniform vec3 uRed;
+  uniform vec3 uGap;
+  varying vec2 vUv;
+  void main() {
+    float phase = fract(vUv.x * 7.0 - abs(vUv.y - 0.5) * 3.5);
+    float stripe = smoothstep(0.42, 0.5, phase) * (1.0 - smoothstep(0.88, 0.96, phase));
+    // Alternating orange/red bands down the panel's width, same clip-safe
+    // >1.0 + toneMapped:false trick as the static panel (see createBarrier's
+    // shader comment for why the colours must come in already-linear).
+    vec3 band = mix(uOrange, uRed, step(0.5, fract(vUv.x * 3.0)));
+    vec3 c = mix(uGap, band * 2.2, stripe);
+    gl_FragColor = vec4(c, 1.0);
+    #include <fog_fragment>
+  }
+`;
+
+const movingPanelMaterial = new THREE.ShaderMaterial({
+  vertexShader: panelVertex,
+  fragmentShader: movingPanelFragment,
+  uniforms: THREE.UniformsUtils.merge([
+    THREE.UniformsLib.fog,
+    {
+      uOrange: { value: new THREE.Color(palette.orange.three) },
+      uRed: { value: new THREE.Color(palette.red.three) },
+      uGap: { value: new THREE.Color(palette.void.three) },
+    },
+  ]),
+  fog: true,
+  side: THREE.DoubleSide,
+  toneMapped: false,
+});
+
+// Slider rig beneath the barrier: a pair of rails the barricade visibly rides
+// along, plus a block where it mounts to them. Lane-width-ish so the rig
+// reads as "this is what makes it move" without implying it travels further
+// than it actually swings (SWEEP_AMPLITUDE in track.ts).
+const RIG_RAIL_LEN = 3.4;
+const RIG_RAIL_Y = -0.56;
+const rigParts = [
+  box(RIG_RAIL_LEN, 0.06, 0.06, 0, RIG_RAIL_Y, FRAME_ZC - 0.1),
+  box(RIG_RAIL_LEN, 0.06, 0.06, 0, RIG_RAIL_Y, FRAME_ZC + 0.1),
+  box(0.3, 0.14, 0.3, 0, RIG_RAIL_Y + 0.08, FRAME_ZC),
+];
+const rigGeometry = mergeGeometries(rigParts);
+const rigMaterial = new THREE.MeshStandardMaterial({
+  color: gunmetal.three,
+  roughness: 0.4,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+});
+
+export function createMovingBarrier(): THREE.Group {
+  const group = new THREE.Group();
+  group.add(
+    new THREE.Mesh(frameGeometry, frameMaterial),
+    new THREE.Mesh(studGeometry, studMaterial),
+    new THREE.LineSegments(edgeGeometry, edgeMaterial),
+    new THREE.Mesh(panelGeometry, movingPanelMaterial),
+    new THREE.Mesh(rigGeometry, rigMaterial),
+  );
+  return group;
+}

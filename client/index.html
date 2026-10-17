@@ -614,12 +614,12 @@
         flex-direction: column;
         justify-content: center;
         align-items: flex-start;
-        gap: 14px;
-        max-width: 420px;
+        gap: 18px;
+        max-width: 520px;
         margin: 0 auto;
       }
       .title-logo {
-        height: 72px;
+        height: 96px;
         width: auto;
         max-width: 100%;
         filter: drop-shadow(0 1px 1px rgba(5, 1, 20, 0.9)) drop-shadow(0 0 10px rgba(255, 42, 109, 0.55))
@@ -629,9 +629,9 @@
       .title-who {
         margin: 0;
         display: flex;
-        gap: 10px;
+        gap: 12px;
         align-items: baseline;
-        font-size: 13px;
+        font-size: 16px;
         letter-spacing: 0.06em;
       }
       .title-name {
@@ -656,18 +656,18 @@
       .title-buttons {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 13px;
         width: 100%;
       }
       .title-button {
         font: inherit;
-        font-size: 15px;
+        font-size: 20px;
         font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: lowercase;
         text-align: left;
-        padding: 12px 18px;
-        border-radius: 10px;
+        padding: 17px 24px;
+        border-radius: 12px;
         cursor: pointer;
         color: var(--hotWhite);
         background: color-mix(in srgb, var(--raised) 80%, transparent);
@@ -703,15 +703,15 @@
          are about to drive rather than switching mid-run. */
       #day {
         display: flex;
-        gap: 8px;
+        gap: 10px;
         align-items: center;
-        font-size: 13px;
+        font-size: 15px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         background: color-mix(in srgb, var(--surface) 70%, transparent);
         border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
         border-radius: 999px;
-        padding: 6px 8px;
+        padding: 8px 11px;
         backdrop-filter: blur(6px);
       }
       #dayLabel {
@@ -724,11 +724,11 @@
         border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
         color: var(--cyan);
         border-radius: 999px;
-        width: 26px;
-        height: 26px;
+        width: 32px;
+        height: 32px;
         line-height: 1;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 16px;
         transition:
           box-shadow 0.15s ease,
           color 0.15s ease;
@@ -758,12 +758,33 @@
           width: 100%;
           max-width: none;
           align-items: stretch;
+          gap: 12px;
           background: linear-gradient(to top, var(--void) 55%, transparent);
           padding-top: 28px;
         }
         .title-logo {
           height: 54px;
           align-self: center;
+        }
+        /* The desktop sizes are deliberately large; at phone width the same
+           numbers leave the demo no room at all — the menu fills the screen
+           and the car ends up behind it. Scaled back to roughly what they
+           were, so the road stays visible above them. */
+        .title-button {
+          font-size: 16px;
+          padding: 13px 18px;
+        }
+        .title-who {
+          font-size: 14px;
+        }
+        #day {
+          font-size: 13px;
+          padding: 6px 9px;
+        }
+        #day button {
+          width: 27px;
+          height: 27px;
+          font-size: 14px;
         }
       }
 

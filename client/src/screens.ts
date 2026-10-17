@@ -9,7 +9,7 @@
 // main.ts (a run exists and has not crashed).
 
 export type Screen =
-  /** Waiting for GET /api/me. Nothing but the scene — see heroShot below. */
+  /** Waiting for GET /api/me. Nothing but the scene — see showsAttract below. */
   | "boot"
   /** A new player picking a name. The title screen waits behind this. */
   | "username"
@@ -25,12 +25,14 @@ export const DESTINATIONS = ["crew", "shop", "cosmetics"] as const;
 export type Destination = (typeof DESTINATIONS)[number];
 
 /**
- * Whether the camera is framing the parked hero car rather than chasing it
- * down the road. True everywhere except an actual run, including `boot` — so
- * the very first frame is already the shot the title screen wants and there
- * is no swing into place once identity resolves.
+ * Whether the attract-mode demo is driving — the car steering itself down the
+ * real road behind the menu, rather than a player driving it.
+ *
+ * True everywhere except an actual run, including `boot`, so the very first
+ * frame is already the shot the title screen wants and there is no swing into
+ * place once identity resolves.
  */
-export function showsHeroShot(screen: Screen): boolean {
+export function showsAttract(screen: Screen): boolean {
   return screen !== "racing" && screen !== "paused";
 }
 

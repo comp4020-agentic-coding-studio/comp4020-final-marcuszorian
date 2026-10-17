@@ -1,8 +1,8 @@
 // The title screen: who you are, which day you're about to drive, and the
 // four ways out of it (race, crew, shop, cosmetics).
 //
-// The car itself is not drawn here — it is the real car in the real scene,
-// framed by hero-shot.ts. This module owns only the right-hand column of
+// The car itself is not drawn here — it is the real car driving the real
+// road, framed by attract.ts. This module owns only the right-hand column of
 // buttons and readouts.
 import type { Destination } from "./screens.ts";
 

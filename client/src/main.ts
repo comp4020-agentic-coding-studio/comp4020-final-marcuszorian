@@ -21,15 +21,18 @@ import { createPlayerCar, setPlayerGhostly, setPlayerTrim } from "./car-model.ts
 import { Cosmetics } from "./cosmetics.ts";
 import { CrewScreen } from "./crew-screen.ts";
 import {
-  clearHeroFraming,
+  applyAttractFraming,
+  ATTRACT_RESPAWN_SECONDS,
+  attractCameraTarget,
+  attractLookAt,
+  clearAttractFraming,
+  createAttractKeyLight,
   createHeadlights,
-  createHeroKeyLight,
-  frameHeroShot,
-  HERO_POSITION,
-  HERO_TURN,
+  driveAttract,
   setHeadlightsActive,
-} from "./hero-shot.ts";
-import { ScreenManager, showsHeroShot, simulates } from "./screens.ts";
+  updateAttractKeyLight,
+} from "./attract.ts";
+import { ScreenManager, showsAttract, simulates } from "./screens.ts";
 import type { Destination, Screen } from "./screens.ts";
 import { SettingsMenu } from "./settings.ts";
 import { Shop } from "./shop.ts";
@@ -185,20 +188,20 @@ roadMaterial.onBeforeCompile = (shader) => {
 const playerCar = createPlayerCar();
 scene.add(playerCar);
 
-// Real light pools at the headlights, for the title screen's hero shot. The
+// Real light pools at the headlights, for the attract-mode demo. The
 // headlight meshes already glow on their own; these are what make them LIGHT
-// something, which is most of what sells a close-up. Parented to the car so
-// they travel with it, and switched off entirely during a run — a chase
-// camera never sees the pool, and that is where a 256MB box and a phone GPU
-// actually feel two extra lights.
+// something — which now actually lands on moving road. Parented to the car so
+// they travel with it, and switched off entirely during a run, where a chase
+// camera never sees the pool and a 256MB box with a phone GPU feels two extra
+// lights.
 const headlights = createHeadlights();
 playerCar.add(headlights);
 
-// Lights the bodywork for the portrait. The scene's rim light is aimed for a
-// car seen from behind at speed; at a front-quarter close-up it leaves the
-// hull reading as a hole with wireframes floating in it.
-const heroKey = createHeroKeyLight();
-scene.add(heroKey, heroKey.target);
+// Lifts the car's near flank out of silhouette for the demo's three-quarter
+// rear angle. The scene's own rim light is aimed for the dead-astern chase
+// view; this is the one that follows the car.
+const attractKey = createAttractKeyLight();
+scene.add(attractKey, attractKey.target);
 
 const cameraRig = new CameraRig();
 const speedLines = new SpeedLines();
@@ -214,7 +217,10 @@ let slide = 0; // normalised lateral velocity, for the cosmetic body roll
 // "the simulation is advancing". A paused run is still running; the screen
 // state is what decides whether time passes. Keeping them separate is what
 // stops a pause from being mistaken for a crash (and recording a score).
+// Attract mode leaves this false throughout: the demo is never a run.
 let running = false;
+/** Seconds left on the attract demo's wreck before it restarts itself. */
+let attractRespawn = 0;
 
 // Which full-screen surface is up. See screens.ts for why this is its own
 // enum rather than a pile of booleans.
@@ -315,9 +321,6 @@ function resetRun(): void {
   car = createCar();
   running = true;
   crashedEl.hidden = true;
-  // Straighten up out of the title screen's three-quarter pose: a car that
-  // started a run still turned 45° would drive down the road sideways.
-  playerCar.rotation.y = 0;
   setPlayerGhostly(playerCar, false);
   speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
@@ -325,25 +328,29 @@ function resetRun(): void {
 }
 
 /**
- * Parks the car at the start line with no run in progress — what the title
- * screen and the three destinations look at. The road is cleared rather than
- * left standing: the hero shot is a portrait of a car, and a strip of road
- * trailing off behind it at this camera angle reads as an abandoned race.
+ * Starts (or restarts) the attract-mode demo: the same car on the same
+ * seeded road, driven by `driveAttract` instead of by a person.
+ *
+ * Deliberately shares `car`, `chunkAt` and `stepCar` with a real run rather
+ * than modelling a separate "demo car". Two code paths through the physics
+ * would be two chances for the title screen to drift away from the game it is
+ * advertising — and the whole point of showing a live road is that it is the
+ * real one. Nothing it does is recorded: `postRunEnd` only ever fires from
+ * the crash branch of a `racing` frame.
  */
-function parkCar(): void {
+function startAttract(): void {
   clearChunks();
   car = createCar();
-  running = false;
+  running = false; // not a run — nothing here can be scored
   slide = 0;
+  attractRespawn = 0;
   crashedEl.hidden = true;
   setPlayerGhostly(playerCar, false);
-  speedLines.mesh.visible = false;
-  playerCar.position.copy(HERO_POSITION);
-  playerCar.rotation.z = 0;
-  // Turned into the three-quarter view. Rotating the CAR rather than orbiting
-  // the camera is what lets "45° from the front" and "car on the left facing
-  // the menu" both be true at once — see hero-shot.ts.
-  playerCar.rotation.y = HERO_TURN;
+  // The demo is the game's own showreel, so it gets the speed lines too —
+  // the one thing reducedMotion still turns off.
+  speedLines.mesh.visible = !reducedMotion;
+  playerCar.rotation.set(0, 0, 0);
+  for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
 }
 
 function setSeed(nextSeed: string): void {
@@ -353,12 +360,14 @@ function setSeed(nextSeed: string): void {
   // told which day as well — see the comment on `leaderboard` above.
   leaderboard.setSeed(seed);
   // A day change no longer restarts a run, because you can only change days
-  // from the title screen now — there is never a run in progress here.
-  parkCar();
+  // from the title screen now — there is never a run in progress here. It
+  // does restart the demo, which is the point: stepping back a day visibly
+  // changes the road, the skyline and the grain behind the menu.
+  startAttract();
 
   // The archive's age reaches the title screen too, not just the road: step
-  // back a few weeks and the hero shot itself looks and sounds like the worn
-  // tape ADR 0002/0003 argue the archive is, before you have pressed start.
+  // back a few weeks and the demo itself looks and sounds like the worn tape
+  // ADR 0002/0003 argue the archive is, before you have pressed start.
   const age = archiveAge(seed);
   postfx.setArchiveAge(age);
   audio.setArchiveAge(age);
@@ -371,10 +380,6 @@ function setSeed(nextSeed: string): void {
   }
   (mountains.children[0] as THREE.Mesh | undefined)?.geometry.dispose();
   mountains = createMountains(seed);
-  // A fresh object defaults to visible, and onScreenChange only ever hid the
-  // one it replaced — so without this, stepping to another day makes the
-  // skyline reappear behind the title screen's portrait.
-  mountains.visible = !showsHeroShot(screens.current);
   scene.add(mountains);
 }
 
@@ -400,30 +405,34 @@ ghostLayer.start();
  * the hero lighting, the mountains/grid the title shot deliberately omits,
  * and the one place a destination's data is refreshed on the way in.
  */
-function onScreenChange(next: Screen): void {
-  const hero = showsHeroShot(next);
-  setHeadlightsActive(headlights, hero);
-  heroKey.visible = hero;
-  // Ghosts are parked at their crash distances along the road, and the hero
-  // camera looks back down it from 6m in front of the start line — so on a
-  // busy day they stack up directly behind the portrait. Hidden, not
-  // unsubscribed: they keep streaming in, so a race starts with them already
-  // in place.
-  ghostLayer.setVisible(!hero);
-  // Deliberately omitted from the hero shot (see plan.md): both are built to
-  // scroll past a moving camera, and a title screen's camera never moves —
-  // a frozen grid reads as a bug, not a backdrop. Sky, sun and fog carry the
-  // palette on their own.
-  grid.visible = !hero;
-  mountains.visible = !hero;
-  // CameraRig smooths toward wherever it last was. Coming back from a
-  // portrait to a chase shot (or the reverse) is a teleport, not a move, so
+function onScreenChange(next: Screen, previous?: Screen): void {
+  const demo = showsAttract(next);
+  setHeadlightsActive(headlights, demo);
+  attractKey.visible = demo;
+  // Ghosts belong to a run, not to a showreel: the demo is not any player's
+  // trace, and parking other people's cars along the road it drives would
+  // read as traffic it is weaving through. Hidden, not unsubscribed — they
+  // keep streaming in, so a race starts with them already in place.
+  ghostLayer.setVisible(!demo);
+  // The full scene now, in both modes. The grid and skyline used to be hidden
+  // behind the title screen because a static camera made a scrolling grid
+  // read as a bug; the camera moves now, so they are simply the game.
+  grid.visible = true;
+  mountains.visible = true;
+
+  // CameraRig smooths toward wherever it last was. Between the demo's
+  // three-quarter rear and the race's chase cam that is a cut, not a move, so
   // the smoothing is reset rather than allowed to swing across the scene.
-  // The frustum offset the hero shot uses has to go too, or the whole road
-  // renders shifted left for the entire run.
-  if (!hero) {
+  // The frustum offset has to go too, or the whole road renders shifted left
+  // for the entire run.
+  if (!demo) {
     cameraRig.reset();
-    clearHeroFraming(camera);
+    clearAttractFraming(camera);
+  } else if (previous !== undefined && !showsAttract(previous)) {
+    // Coming back from a run (Home, or a crash): the car is sitting wherever
+    // it died, so the demo starts over rather than resuming someone's wreck.
+    cameraRig.reset();
+    startAttract();
   }
 
   if (next === "title") void refreshTitleAccount();
@@ -447,8 +456,10 @@ function goHome(): void {
   // paused run that walks away shouldn't start. Only a crash records (ADR
   // 0006's "the record closes at midnight" is about which DAY counts; this
   // is about what counts as a finished run at all).
+  //
+  // onScreenChange restarts the demo on the way in, so there is nothing to
+  // reset here — the car is about to be handed back to the autopilot.
   running = false;
-  parkCar();
   screens.go("title");
 }
 
@@ -728,6 +739,36 @@ usernameForm.addEventListener("submit", (e) => {
 let lastTime = performance.now();
 let elapsed = 0;
 let audioDriving = false;
+// Reused every frame rather than allocated: this runs 60 times a second, and
+// two fresh Vector3s per frame is garbage the collector has to chase.
+const cameraTarget = new THREE.Vector3();
+const cameraLook = new THREE.Vector3();
+
+/**
+ * Advances the car one step and keeps the road streamed around it. Shared by
+ * a real run and the attract demo, so the two can never disagree about
+ * physics, collision, or how far ahead the road exists.
+ *
+ * Returns true on the frame the car crashes.
+ */
+function stepAndStream(dt: number): boolean {
+  const currentIndex = Math.floor(car.distance / CHUNK_LENGTH);
+  const nearby = [
+    ...(chunkObjects.has(currentIndex) ? chunkFor(seed, currentIndex).obstacles : []),
+    ...(chunkObjects.has(currentIndex + 1) ? chunkFor(seed, currentIndex + 1).obstacles : []),
+  ];
+
+  const previousOffset = car.offset;
+  const justCrashed = stepCar(car, dt, nearby);
+  // Normalised lateral velocity drives the body roll — see CameraRig.updateCarBank.
+  slide = Math.max(-1, Math.min(1, lateralVelocity(car, previousOffset, dt) / SLIDE_PEAK_SPEED));
+
+  const nextIndex = Math.floor(car.distance / CHUNK_LENGTH);
+  for (let i = nextIndex; i <= nextIndex + LOOKAHEAD_CHUNKS; i++) chunkAt(i);
+  pruneChunks(nextIndex);
+
+  return justCrashed;
+}
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
@@ -742,21 +783,38 @@ function frame(now: number): void {
   lastTime = now;
   elapsed += dt;
 
+  const attracting = showsAttract(screens.current);
+
+  // The demo drives the same car, over the same seeded road, through the same
+  // stepCar — the only difference is who chooses the lane. A separate "demo
+  // physics" path would be a second chance for the title screen to drift from
+  // the game it is advertising.
+  if (attracting) {
+    if (car.crashed) {
+      // The autopilot is good, not perfect, and a generated pattern can demand
+      // a shift it cannot make in time. Rather than fake invulnerability, it
+      // crashes like a player would and the demo starts over.
+      attractRespawn -= dt;
+      if (attractRespawn <= 0) startAttract();
+    } else {
+      driveAttract(car, seed);
+      stepAndStream(dt);
+      if (car.crashed) {
+        attractRespawn = ATTRACT_RESPAWN_SECONDS;
+        setPlayerGhostly(playerCar, true);
+        speedLines.mesh.visible = false;
+        const burst = new CrashBurst(new THREE.Vector3(car.offset, 0.6, -car.distance));
+        scene.add(burst.points);
+        activeBursts.push(burst);
+        // No audio.crash() and no camera shake: the demo plays behind a menu
+        // someone may be reading, and a bang plus a jolt from a car they are
+        // not driving is startling rather than atmospheric.
+      }
+    }
+  }
+
   if (driving()) {
-    const currentIndex = Math.floor(car.distance / CHUNK_LENGTH);
-    const nearby = [
-      ...(chunkObjects.has(currentIndex) ? chunkFor(seed, currentIndex).obstacles : []),
-      ...(chunkObjects.has(currentIndex + 1) ? chunkFor(seed, currentIndex + 1).obstacles : []),
-    ];
-
-    const previousOffset = car.offset;
-    const justCrashed = stepCar(car, dt, nearby);
-    // Normalised lateral velocity drives the body roll — see CameraRig.updateCarBank.
-    slide = Math.max(-1, Math.min(1, lateralVelocity(car, previousOffset, dt) / SLIDE_PEAK_SPEED));
-
-    const nextIndex = Math.floor(car.distance / CHUNK_LENGTH);
-    for (let i = nextIndex; i <= nextIndex + LOOKAHEAD_CHUNKS; i++) chunkAt(i);
-    pruneChunks(nextIndex);
+    const justCrashed = stepAndStream(dt);
 
     scoreEl.textContent = `${Math.floor(car.distance)} m`;
 
@@ -811,16 +869,31 @@ function frame(now: number): void {
   }
 
   const speed = speedAt(car.distance);
-  const hero = showsHeroShot(screens.current);
+  const x = car.offset;
+  const z = -car.distance;
+  playerCar.position.set(x, 0.5, z);
 
-  if (hero) {
-    // A parked portrait: no chase, no lag, no shake, no speed-widened FOV.
-    // The car stays where parkCar() put it.
-    frameHeroShot(camera, window.innerWidth, window.innerHeight);
+  if (attracting) {
+    // Banking still applies: the demo's lane changes are real slides, and a
+    // car that changed lanes without leaning would look like it was sliding
+    // on ice. It stops rolling once wrecked, same as a crashed player's.
+    cameraRig.updateCarBank(playerCar, car.crashed ? 0 : slide, dt);
+    const portrait = window.innerHeight > window.innerWidth;
+    cameraRig.updateCamera(
+      camera,
+      dt,
+      attractCameraTarget(car, cameraTarget, portrait),
+      attractLookAt(car, cameraLook),
+      speed,
+    );
+    updateAttractKeyLight(attractKey, car);
+    // Pushes everything rendered to the left, clearing the right-hand half
+    // for the menu — without moving or aiming the camera, either of which
+    // would rotate the composed shot.
+    applyAttractFraming(camera, window.innerWidth, window.innerHeight);
+    camera.updateProjectionMatrix();
+    // No cameraShake here: a jolt behind a menu reads as a glitch.
   } else {
-    const x = car.offset;
-    const z = -car.distance;
-    playerCar.position.set(x, 0.5, z);
     // Banking follows the slide only while time is passing — a paused car
     // holds its roll instead of unwinding it, so resuming picks up mid-slide
     // rather than snapping upright first.
@@ -828,8 +901,8 @@ function frame(now: number): void {
     cameraRig.updateCamera(
       camera,
       dt,
-      new THREE.Vector3(x, 4.5, z + 7),
-      new THREE.Vector3(x, 0.5, z - 10),
+      cameraTarget.set(x, 4.5, z + 7),
+      cameraLook.set(x, 0.5, z - 10),
       speed,
     );
     if (!reducedMotion) camera.position.add(cameraShake.update(dt, elapsed));
@@ -837,12 +910,8 @@ function frame(now: number): void {
 
   updateSky(sky, camera);
   updateSun(sun, camera);
-  // Both are hidden on the hero shot (see onScreenChange), so there is
-  // nothing to scroll.
-  if (!hero) {
-    updateGrid(grid, camera);
-    updateMountains(mountains, camera);
-  }
+  updateGrid(grid, camera);
+  updateMountains(mountains, camera);
   // Name tags reach exactly as far as the road does: LOOKAHEAD_CHUNKS is the
   // number of chunks built ahead of the car, so this is the span that is
   // always drawn (the car sits somewhere inside its own chunk, so the real
@@ -852,6 +921,11 @@ function frame(now: number): void {
   // Derived from the same condition that gates stepping, rather than latched
   // at reset and crash, so a pause, a crash, the username prompt and a day
   // switch all agree without each having to remember to say so.
+  //
+  // The attract demo is deliberately SILENT — the engine note stays off while
+  // the menu is up. A car droning behind a menu someone is reading is the
+  // thing most likely to make them reach for mute, and the sound is the one
+  // part of the game that is better met when you press start.
   const isDriving = driving();
   if (isDriving !== audioDriving) {
     audioDriving = isDriving;

@@ -321,7 +321,7 @@ export interface MovingPattern {
 // Lateral speed in time is amplitude * (2π·carSpeed / wavelength) — doubling
 // wavelength halves how fast the sweep reads at any given approach speed,
 // without touching `(seed, distance)` purity (ADR 0012).
-const SWEEP_WAVELENGTH = 28; // metres of travel per full lateral cycle
+const SWEEP_WAVELENGTH = 36; // metres of travel per full lateral cycle
 const SWEEP_AMPLITUDE = LANE_WIDTH;
 
 // No row may carry two specs centred on the same lane — two barriers

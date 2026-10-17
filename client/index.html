@@ -459,6 +459,35 @@
         color: var(--lilac);
         opacity: 0.75;
       }
+      /* The global/crew switch. Appears only for a crew member — and the two
+         tabs genuinely show different sets, because the road is crew-only
+         while this panel is not (doc/adr/0011-crews.md). */
+      .leaderboard-tabs {
+        display: flex;
+        gap: 4px;
+        margin-top: 8px;
+      }
+      .leaderboard-tabs[hidden] {
+        display: none;
+      }
+      .leaderboard-tabs button {
+        flex: 1 1 0;
+        font: inherit;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 3px 6px;
+        cursor: pointer;
+        color: var(--lilac);
+        background: transparent;
+        border: 1px solid color-mix(in srgb, var(--cyan) 22%, transparent);
+        border-radius: 5px;
+      }
+      .leaderboard-tabs button[aria-pressed="true"] {
+        color: var(--hotWhite);
+        border-color: color-mix(in srgb, var(--cyan) 65%, transparent);
+        background: color-mix(in srgb, var(--cyan) 14%, transparent);
+      }
       .leaderboard-list {
         list-style: none;
         margin: 8px 0 0;
@@ -548,6 +577,178 @@
         }
       }
 
+      /* ---- the garage: coins, trim colours, crew ----
+         Coin rewards for a closed day's rank (doc/adr/0010-coin-economy.md)
+         and crews with invite links (doc/adr/0011-crews.md). Sits below the
+         leaderboard in the same left column, and like it is sized to its
+         content rather than inset:0 — anything inside #hud inherits
+         pointer-events:auto and must never cover road it doesn't draw on. */
+      #garage {
+        position: absolute;
+        left: 16px;
+        bottom: 16px;
+        width: 190px;
+        max-width: calc(100vw - 32px);
+        font-size: 12px;
+      }
+      #garage[hidden] {
+        display: none;
+      }
+      #garage details {
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 30%, transparent);
+        border-radius: 8px;
+        padding: 8px 10px;
+        backdrop-filter: blur(3px);
+      }
+      #garage summary {
+        cursor: pointer;
+        color: var(--lilac);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 10px;
+        list-style: none;
+      }
+      #garage summary::-webkit-details-marker {
+        display: none;
+      }
+      #garage summary::after {
+        content: " ▾";
+        opacity: 0.6;
+      }
+      #garage details[open] summary::after {
+        content: " ▴";
+      }
+      /* Gold is "first place" on the leaderboard and the score's colour; a
+         coin balance is the same kind of number, so it reads consistently. */
+      .garage-coins {
+        color: var(--gold);
+        font-weight: 700;
+      }
+      .garage-skins {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        max-height: 30vh;
+        overflow-y: auto;
+      }
+      .garage-skin {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 3px 0;
+      }
+      /* The swatch IS the skin: its colour comes from the same palette token
+         the car's trim material does (a skin's id is a palette key), so the
+         dot and the car can't disagree about what you bought. */
+      .garage-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .garage-skin-name {
+        color: var(--pink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1 1 auto;
+      }
+      .garage-skin.is-equipped .garage-skin-name {
+        color: var(--mint);
+      }
+      .garage-action {
+        font: inherit;
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        cursor: pointer;
+        flex: none;
+        color: var(--hotWhite);
+        background: color-mix(in srgb, var(--violet) 26%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent);
+        border-radius: 5px;
+      }
+      .garage-action:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+      /* A price, not a verb — warm so it reads as a cost next to the balance. */
+      .garage-buy {
+        color: var(--gold);
+        background: transparent;
+        border-color: color-mix(in srgb, var(--gold) 40%, transparent);
+        font-variant-numeric: tabular-nums;
+      }
+      .garage-crew {
+        margin-top: 10px;
+        border-top: 1px solid color-mix(in srgb, var(--violet) 22%, transparent);
+        padding-top: 8px;
+      }
+      .garage-crew-name {
+        margin: 0;
+        color: var(--laserCyan);
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .garage-hint {
+        margin: 3px 0 0;
+        color: var(--lilac);
+        font-size: 10px;
+        line-height: 1.4;
+      }
+      .garage-crew-form {
+        display: flex;
+        gap: 4px;
+        margin-top: 6px;
+      }
+      .garage-crew-form input {
+        font: inherit;
+        font-size: 11px;
+        min-width: 0;
+        flex: 1 1 auto;
+        padding: 2px 6px;
+        color: var(--hotWhite);
+        background: color-mix(in srgb, var(--void) 70%, transparent);
+        border: 1px solid color-mix(in srgb, var(--cyan) 30%, transparent);
+        border-radius: 5px;
+      }
+      .garage-invite {
+        margin-top: 7px;
+        width: 100%;
+      }
+      .garage-status {
+        margin: 7px 0 0;
+        font-size: 10px;
+        line-height: 1.4;
+        word-break: break-all; /* a pasted invite URL, when the clipboard is refused */
+        color: var(--mint);
+      }
+      .garage-status[data-kind="error"] {
+        color: var(--red);
+      }
+
+      /* On a phone the garage joins the leaderboard as a disclosure near the
+         top rather than floating at the bottom, where it would sit over the
+         crash panel and the road. Same reasoning as #leaderboard above. */
+      @media (max-width: 700px) {
+        #garage {
+          left: 16px;
+          right: 16px;
+          bottom: auto;
+          top: 118px;
+          width: auto;
+          max-width: none;
+        }
+        #garage details {
+          background: color-mix(in srgb, var(--surface) 94%, transparent);
+        }
+        .garage-skins {
+          max-height: 26vh;
+        }
+      }
+
     </style>
   </head>
   <body>
@@ -566,8 +767,25 @@
           <summary>
             leaderboard <span class="leaderboard-count">0</span>
           </summary>
+          <!-- Shown only once you're in a crew: without one the road already
+               IS the whole day, so a switch would offer two names for one
+               list. See doc/adr/0011-crews.md. -->
+          <div class="leaderboard-tabs" role="group" aria-label="leaderboard scope" hidden>
+            <button type="button" data-scope="crew" aria-pressed="true">crew</button>
+            <button type="button" data-scope="global" aria-pressed="false">everyone</button>
+          </div>
           <p class="leaderboard-empty">nobody has driven this day yet</p>
           <ul class="leaderboard-list" hidden></ul>
+        </details>
+      </section>
+      <!-- Coins, trim colours and your crew: the things about YOU rather than
+           about the road. Hidden until the server says who you are. -->
+      <section id="garage" aria-label="garage" hidden>
+        <details>
+          <summary>garage <span class="garage-coins">0</span></summary>
+          <ul class="garage-skins"></ul>
+          <div class="garage-crew"></div>
+          <p class="garage-status" role="status"></p>
         </details>
       </section>
       <div id="ghostLabels"></div>

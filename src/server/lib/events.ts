@@ -15,6 +15,13 @@ export interface ScoreChange {
   trackSeed: string;
   distance: number;
   lane: number | null;
+  /**
+   * The author's crew, or null. Carried on the change rather than looked up
+   * by the broadcaster: the run's audience is decided by who the author was
+   * AT THE MOMENT THEY FINISHED, and a lookup at broadcast time would read a
+   * crew they might already have left (ADR 0011).
+   */
+  crewId: number | null;
 }
 
 type Listener = (change: ScoreChange) => void;

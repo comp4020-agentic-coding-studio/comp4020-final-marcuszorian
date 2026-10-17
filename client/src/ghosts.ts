@@ -79,6 +79,23 @@ export class GhostLayer {
     if (!this.#liveOpen) void this.#refresh();
   }
 
+  /**
+   * Re-asks for the current day's ghosts without changing day. Called when
+   * crew membership changes: the server re-resolves the connection's crew on
+   * every subscribe, so this is what narrows (or widens) the road mid-session
+   * rather than on a reload — the one thing ADR 0005 promised never to
+   * require. The clear is not optional: joining a crew REMOVES ghosts, and a
+   * subscribe's full list only adds and replaces until #render prunes against
+   * it, which it does — but the clear makes the narrowing instant rather than
+   * one round trip later.
+   */
+  resubscribe(): void {
+    if (!this.#seed) return;
+    this.#clear();
+    this.#live.subscribe(this.#seed);
+    if (!this.#liveOpen) void this.#refresh();
+  }
+
   dispose(): void {
     if (this.#timer) clearTimeout(this.#timer);
     this.#live.dispose();

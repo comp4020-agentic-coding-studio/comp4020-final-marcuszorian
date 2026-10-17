@@ -75,7 +75,12 @@ it("tells a signed-in browser who it is", async () => {
 
   const res = await fetch(new URL("/api/me", baseUrl), { headers: { cookie: `token=${token}` } });
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ username });
+  // toMatchObject, not toEqual: /api/me grew `coins` and `equippedSkin`
+  // alongside the username (ADR 0010), and the question this test asks is
+  // "does a signed-in browser get told who it is" — pinning the exact shape
+  // here would make every later field a failure of the identity check.
+  // spec/skins.test.ts pins the economy fields themselves.
+  expect(await res.json()).toMatchObject({ username });
 });
 
 it("tells a browser with no cookie that it is nobody", async () => {

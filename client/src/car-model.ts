@@ -62,7 +62,9 @@ const WING_POS = new THREE.Vector3(0, 0.06, 0.95);
 // hot it "washed the player car's magenta out to pale pink" — past about 1.5
 // the hue clips toward white, the lines fuse into a solid mass at distance,
 // and the car stops being magenta, which is the one thing it has to be.
-function neonLine(color: THREE.ColorRepresentation, opacity = 1, gain = 1.4): THREE.LineBasicMaterial {
+const TRIM_GAIN = 1.4;
+
+function neonLine(color: THREE.ColorRepresentation, opacity = 1, gain = TRIM_GAIN): THREE.LineBasicMaterial {
   const m = new THREE.LineBasicMaterial({ toneMapped: false, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 });
   m.color.set(color).multiplyScalar(gain);
   return m;
@@ -85,7 +87,12 @@ interface GhostSwap {
   ghost: THREE.Material;
 }
 
-export function createPlayerCar(): THREE.Group {
+/**
+ * The player's trim colour. Magenta is the free default and every other value
+ * is a skin unlocked with coins (ADR 0010) — `red` and `lavender` are never
+ * offered, because they already mean "obstacle" and "ghost" (ADR 0003).
+ */
+export function createPlayerCar(trimColor: THREE.ColorRepresentation = palette.magenta.three): THREE.Group {
   const group = new THREE.Group();
   // No envMap anywhere in this scene, so any metalness above 0 has nothing to
   // reflect and just drives the hull toward black. The faint emissive is what
@@ -100,7 +107,7 @@ export function createPlayerCar(): THREE.Group {
     emissive: palette.violet.three,
     emissiveIntensity: 0.09,
   });
-  const trim = neonLine(palette.magenta.three);
+  const trim = neonLine(trimColor);
 
   // The player's death look: the same lavender, barely-there style every other
   // ghost car already wears (see createGhostCar below) — becoming a ghost
@@ -168,7 +175,22 @@ export function createPlayerCar(): THREE.Group {
 
   group.userData.solidOnly = solidOnly;
   group.userData.ghostSwap = ghostSwap;
+  // One material backs every trim line on the car (body edges and the wing),
+  // so a skin change is one colour write — see setPlayerTrim.
+  group.userData.trim = trim;
   return group;
+}
+
+/**
+ * Repaints the player's trim — the body and wing edge lines — when a skin is
+ * equipped. Writes the colour into the existing material rather than swapping
+ * in a new one, which is what keeps this safe to call while the car is
+ * ghostly: `setPlayerGhostly` holds a reference to this exact material as the
+ * "solid" half of its swap, so the new colour is simply what it comes back as.
+ */
+export function setPlayerTrim(group: THREE.Group, color: THREE.ColorRepresentation): void {
+  const trim = group.userData.trim as THREE.LineBasicMaterial | undefined;
+  trim?.color.set(color).multiplyScalar(TRIM_GAIN);
 }
 
 /**

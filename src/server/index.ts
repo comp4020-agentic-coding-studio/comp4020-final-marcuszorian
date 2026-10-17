@@ -52,6 +52,15 @@ app.get("/", (_req, res) => {
   res.sendFile(join(clientDist, "index.html"));
 });
 
+// An invite link is a path, not a query parameter (ADR 0011), so it has to
+// serve the same page. main.ts reads location.pathname on load, joins once an
+// account exists, and replaceState's back to "/" so a refresh cannot
+// double-join. Nothing about the token is interpreted here — the server's
+// only job is to not 404 on a URL someone was handed in a chat window.
+app.get("/crew/:token", (_req, res) => {
+  res.sendFile(join(clientDist, "index.html"));
+});
+
 // An explicit http.Server rather than app.listen(): the WebSocket server
 // needs something to attach its `upgrade` handling to, and express's own
 // return value is the same object only by accident of implementation.

@@ -31,6 +31,12 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=builder /app/dist ./dist
 COPY src ./src
+# The server imports standings() out of client/src/leaderboard.ts so the coin
+# payout and the leaderboard panel cannot disagree about a tie (ADR 0009,
+# 0010). That makes client/ a RUNTIME dependency of the server, not only a
+# build input — without this line the image boots and dies on the first
+# require, with everything green locally.
+COPY client ./client
 COPY migrations ./migrations
 COPY README.md ./README.md
 

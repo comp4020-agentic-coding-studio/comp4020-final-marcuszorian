@@ -17,7 +17,8 @@ import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
-import { createPlayerCar, setPlayerGhostly } from "./car-model.ts";
+import { createPlayerCar, setPlayerGhostly, setPlayerTrim } from "./car-model.ts";
+import { Garage, skinColor } from "./garage.ts";
 import { createBarrier } from "./barrier-model.ts";
 import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
@@ -43,6 +44,7 @@ const ghostLabelsEl = document.getElementById("ghostLabels")!;
 const fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
 const soundToggle = document.getElementById("soundToggle") as HTMLButtonElement;
 const leaderboardEl = document.getElementById("leaderboard")!;
+const garageEl = document.getElementById("garage")!;
 
 // ---- three.js scene ----
 const scene = new THREE.Scene();
@@ -183,8 +185,15 @@ let slide = 0; // normalised lateral velocity, for the cosmetic body roll
 let running = false;
 
 const chunkObjects = new Map<number, THREE.Object3D>();
-// The leaderboard reads the same ghost set the scene draws, so the panel and
-// the road can never disagree about who is on this day.
+// The leaderboard reads the ghost set the scene draws — which, until crews
+// (ADR 0011), meant the panel and the road could never disagree about who was
+// on this day. That is no longer unconditionally true, and the change is
+// deliberate: once you are in a crew the ROAD narrows to your crew with no
+// opt-out, while the PANEL keeps a global tab. On that tab the panel fetches
+// the whole day itself (`getGhosts(seed, "global")` inside leaderboard.ts)
+// rather than reading the road's set, because the two are now different sets
+// by design. Crew-less, the pushed set still answers both and nothing is
+// fetched twice.
 const leaderboard = new Leaderboard(leaderboardEl);
 const ghostLayer = new GhostLayer(scene, "", ghostLabelsEl, (ghosts) => leaderboard.update(ghosts));
 
@@ -263,6 +272,9 @@ function resetRun(): void {
 function setSeed(nextSeed: string): void {
   seed = nextSeed;
   ghostLayer.setSeed(seed);
+  // The panel's global tab does its own day-scoped fetch now, so it has to be
+  // told which day as well — see the comment on `leaderboard` above.
+  leaderboard.setSeed(seed);
   resetRun();
   const age = archiveAge(seed);
   postfx.setArchiveAge(age);
@@ -366,11 +378,47 @@ for (const event of ["pointerdown", "keydown"]) {
 // the modal stays hidden and the game plays; a returning player sees no flash
 // of a form they already filled in, and a new one gets it a round trip later.
 let account: Account | null = null;
+
+// ---- garage: coins, trim, crew ----
+const garage = new Garage(garageEl, {
+  onTrimChange: (skinId) => setPlayerTrim(playerCar, skinColor(skinId)),
+  onCrewChange: (crew) => {
+    // Joining narrows the road to the crew, unconditionally (ADR 0011). The
+    // re-subscribe is what makes that happen without a reload — the server
+    // re-resolves the connection's crew on every subscribe, exactly as it
+    // does on a day change.
+    leaderboard.setInCrew(crew !== null);
+    ghostLayer.resubscribe();
+  },
+  onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
+});
+
+// A `/crew/<token>` invite is a path, not a query parameter (ADR 0011). Read
+// once at boot, then replaceState back to "/" so a refresh can't double-join
+// — and held until an account exists, the same deferred-until-signed-in shape
+// postRunEnd already uses, because joining is a write and a write needs a
+// name.
+const inviteMatch = location.pathname.match(/^\/crew\/([^/]+)\/?$/);
+const pendingInvite = inviteMatch ? decodeURIComponent(inviteMatch[1]!) : null;
+if (pendingInvite) history.replaceState(null, "", "/");
+
+function onSignedIn(found: Account): void {
+  account = found;
+  leaderboard.setViewer(found.username);
+  setPlayerTrim(playerCar, skinColor(found.equippedSkin));
+  void garage.setSignedIn(true).then(() => {
+    if (pendingInvite) return garage.join(pendingInvite);
+  });
+}
+
 getAccount()
   .then((found) => {
-    account = found;
-    leaderboard.setViewer(found?.username ?? null);
-    if (!found) usernameModal.hidden = false;
+    if (found) {
+      onSignedIn(found);
+    } else {
+      leaderboard.setViewer(null);
+      usernameModal.hidden = false;
+    }
   })
   .catch(() => {
     // Couldn't ask (offline, server down). Don't demand a username that may
@@ -396,8 +444,7 @@ usernameForm.addEventListener("submit", (e) => {
 
   postAccount(name)
     .then((created) => {
-      account = created;
-      leaderboard.setViewer(created.username);
+      onSignedIn(created); // picks up a queued /crew/<token> invite, if there was one
       usernameModal.hidden = true;
       // Start them at 0: the loop was running while we asked the server who
       // they were, so without this their first run begins a metre or two in.
@@ -491,6 +538,11 @@ function frame(now: number): void {
             if (result.improved) {
               audio.uiBlip("best");
               void daySelector.load();
+              // Any API request can be the one that settles a closed day
+              // (ADR 0010: there is no scheduler, ordinary traffic does it),
+              // so the balance may have just moved. Cheap, and the only
+              // moment a player is looking for a change in it.
+              if (account) void garage.refreshSkins();
             }
           })
           .catch(() => {

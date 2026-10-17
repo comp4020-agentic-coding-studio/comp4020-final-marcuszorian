@@ -51,8 +51,34 @@ So, for now, good means:
   player finding *their own* ghost from earlier the same day, or from a day
   they'd almost forgotten.
 
-What this doesn't mean, on purpose: there's no social layer — no names you
-recognize going in, no following, no messaging.
+What this doesn't mean, on purpose: there's no messaging, and no names you
+recognize going in unless someone hands you a link.
+
+That bullet used to be shorter and flatter — "no social layer — no names you
+recognize going in, no following, no messaging" — and the middle third of it
+is no longer true. There are **crews** now: make one, send the link to four
+friends, and once they join, the ghosts on your road are your crew's and
+nobody else's. That's standing membership, which is closer to following than
+anything this app has shipped, and `doc/adr/0011-crews.md` argues it in the
+open rather than letting the sentence above quietly go stale — including the
+part where the leaderboard panel keeps a global tab while the road doesn't,
+so for a crew member the panel and the road now deliberately disagree about
+who's on the day.
+
+It's also, for what it's worth, the first time this project does literally
+what the paragraph above argued *for*: built for people who'll actually
+recognize each other's presence, not an anonymous crowd. The global
+leaderboard ranks strangers, by its own admission. An invite link handed to
+four friends doesn't.
+
+Placing in a day's top ten pays **coins** once that day closes — 100 for
+first down to 10 for tenth — and coins buy trim colours for your car. Not
+red, which means obstacle, and not lavender, which means ghost; the colour
+grammar in `doc/adr/0003-visual-direction.md` still holds, and the moment you
+crash your skin vanishes and you look like every other ghost on the road.
+`doc/adr/0010-coin-economy.md` has the rest, including why a day's books are
+settled by whoever happens to make the next request rather than by a
+scheduler there's no machine to run.
 
 Ghosts *are* live now: finish a run anywhere and it reaches every open session
 on that day's road within a second, no reload. That reverses the "a ghost can

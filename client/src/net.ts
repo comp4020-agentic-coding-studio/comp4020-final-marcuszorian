@@ -14,6 +14,9 @@ async function json<T>(res: Response): Promise<T> {
 
 export interface Account {
   username: string;
+  coins: number;
+  /** The equipped skin's palette token key, or null for the free magenta default. */
+  equippedSkin: string | null;
 }
 
 /**
@@ -54,14 +57,91 @@ export async function postRunEnd(
   return json(res);
 }
 
-export async function getGhosts(seed: string): Promise<Ghost[]> {
-  const res = await fetch(`/api/ghosts?seed=${encodeURIComponent(seed)}`);
+/**
+ * The day's ghosts. Scoped to your crew by default, because that is what the
+ * road shows once you are in one (ADR 0011) — `scope: "global"` is the escape
+ * hatch the leaderboard panel's global tab uses, and the only caller that
+ * should ever pass it.
+ */
+export async function getGhosts(seed: string, scope?: "global"): Promise<Ghost[]> {
+  const query = scope ? `&scope=${scope}` : "";
+  const res = await fetch(`/api/ghosts?seed=${encodeURIComponent(seed)}${query}`);
   return json(res);
 }
 
 export async function getDays(): Promise<string[]> {
   const res = await fetch("/api/days");
   return json(res);
+}
+
+// ---- skins ----
+export interface Skin {
+  id: string;
+  name: string;
+  cost: number;
+  owned: boolean;
+  equipped: boolean;
+}
+
+export interface SkinsResponse {
+  coins: number;
+  skins: Skin[];
+}
+
+export async function getSkins(): Promise<SkinsResponse> {
+  return json(await fetch("/api/skins"));
+}
+
+export async function unlockSkin(id: string): Promise<SkinsResponse> {
+  return json(await fetch(`/api/skins/${encodeURIComponent(id)}/unlock`, { method: "POST" }));
+}
+
+/** `null` equips the free magenta default. */
+export async function equipSkin(id: string | null): Promise<{ equipped: string | null; skins: Skin[] }> {
+  return json(await fetch(`/api/skins/${encodeURIComponent(id ?? "default")}/equip`, { method: "POST" }));
+}
+
+// ---- crews ----
+export interface Crew {
+  id: number;
+  name: string;
+  inviteToken: string;
+  /** Joins EVER, which is what the invite's cap counts against — not the member count. */
+  joinCount: number;
+  maxJoins: number | null;
+  expiresAt: string | null;
+  memberCount: number;
+  open: boolean;
+  inviteUrl?: string;
+}
+
+export interface CreateCrewOptions {
+  maxJoins?: number;
+  expiresInSeconds?: number;
+}
+
+export async function createCrew(name: string, options: CreateCrewOptions = {}): Promise<{ crew: Crew; inviteUrl: string }> {
+  return json(
+    await fetch("/api/crews", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, ...options }),
+    }),
+  );
+}
+
+/** What an invite points at, readable before you have an account. */
+export async function getCrew(token: string): Promise<{ name: string; open: boolean }> {
+  return json(await fetch(`/api/crews/${encodeURIComponent(token)}`));
+}
+
+export async function joinCrew(token: string): Promise<{ crew: Crew }> {
+  return json(await fetch(`/api/crews/${encodeURIComponent(token)}/join`, { method: "POST" }));
+}
+
+export async function getMyCrew(): Promise<Crew | null> {
+  const body = await json<{ crew: Crew | null }>(await fetch("/api/crews/me"));
+  return body.crew;
 }
 
 // ---- live feed ----

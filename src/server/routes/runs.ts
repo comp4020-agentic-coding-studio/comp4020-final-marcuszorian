@@ -61,6 +61,7 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
       trackSeed,
       distance,
       lane: laneValue,
+      crewId: user.crewId,
     });
   }
 

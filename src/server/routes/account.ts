@@ -10,7 +10,15 @@ export const accountRouter: Router = Router();
 // `document.cookie`, which an httpOnly cookie is never in, so the client
 // believed nobody was ever signed in and never saved a run.)
 accountRouter.get("/me", requireAuth, (req, res) => {
-  res.status(200).json({ username: req.user!.username });
+  const user = req.user!;
+  // Coins and the equipped skin ride along here rather than getting their own
+  // endpoint: the client already makes this call on boot to find out who it
+  // is, and the answer to "who am I" now reasonably includes what I'm wearing
+  // and what I can afford. `equippedSkin: null` is the free magenta default.
+  const row = db
+    .prepare("SELECT coins, equipped_skin AS equippedSkin FROM users WHERE id = ?")
+    .get(user.id) as { coins: number; equippedSkin: string | null };
+  res.status(200).json({ username: user.username, ...row });
 });
 
 accountRouter.post("/account", (req, res) => {
@@ -33,5 +41,8 @@ accountRouter.post("/account", (req, res) => {
   }
 
   setAuthCookie(res, token);
-  res.status(200).json({ username: username.trim() });
+  // Same shape as GET /api/me, so the client has one Account type rather than
+  // two nearly-identical ones. A fresh account is always broke and wearing
+  // the default.
+  res.status(200).json({ username: username.trim(), coins: 0, equippedSkin: null });
 });

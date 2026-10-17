@@ -1,4 +1,8 @@
 import { expect, inject, it } from "vitest";
+// The `ws` client rather than Node's global WebSocket: the crew cases below
+// need the handshake to carry a cookie, and undici's WebSocket has no way to
+// set one. Same package the server uses, already a dependency.
+import WebSocket from "ws";
 
 // C9's spec line, as close to literally as a test can hold it: "a change one
 // person makes appears in every other open session within about a second,
@@ -50,17 +54,24 @@ interface Message {
   ghost?: { username: string; distance: number };
 }
 
-/** An open, subscribed session that records everything pushed to it. */
-async function openSession(seed: string): Promise<{
+/**
+ * An open, subscribed session that records everything pushed to it.
+ *
+ * `token` makes the socket a signed-in one. The handshake carries the cookie
+ * an HTTP request would, which is how the server knows whose crew this
+ * connection belongs to (ADR 0011) — without it the connection is anonymous
+ * and sees the whole day, same as it always did.
+ */
+async function openSession(seed: string, token?: string): Promise<{
   received: Message[];
   waitFor(match: (m: Message) => boolean, ms: number): Promise<Message>;
   close(): void;
 }> {
-  const socket = new WebSocket(wsUrl);
+  const socket = new WebSocket(wsUrl, token ? { headers: { cookie: `token=${token}` } } : {});
   const received: Message[] = [];
   const waiters: { match: (m: Message) => boolean; resolve: (m: Message) => void }[] = [];
 
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", (event: { data: unknown }) => {
     const message = JSON.parse(String(event.data)) as Message;
     received.push(message);
     for (let i = waiters.length - 1; i >= 0; i--) {
@@ -175,6 +186,119 @@ it("only an improvement is broadcast", async () => {
       WITHIN_MS,
     );
     expect(improved.ghost).toMatchObject({ distance: 900 });
+  } finally {
+    session.close();
+  }
+});
+
+// ---- crews (ADR 0011) ----
+// The live feed has to agree with what GET /api/ghosts would hand the same
+// viewer. spec/crews.test.ts pins the HTTP half; these pin that the socket
+// says the same thing, because a disagreement between them means reconnecting
+// silently changes what you can see.
+
+async function makeCrew(token: string): Promise<string> {
+  const res = await fetch(new URL("/api/crews", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: `token=${token}` },
+    body: JSON.stringify({ name: "live crew" }),
+  });
+  // One read of the body: res.text() consumes it even on a pass, and a
+  // res.json() after that throws rather than asserting anything.
+  const text = await res.text();
+  expect(res.status, text).toBe(200);
+  return (JSON.parse(text) as { crew: { inviteToken: string } }).crew.inviteToken;
+}
+
+async function join(token: string, invite: string): Promise<void> {
+  const res = await fetch(new URL(`/api/crews/${invite}/join`, baseUrl), {
+    method: "POST",
+    headers: { cookie: `token=${token}` },
+  });
+  expect(res.status, await res.text()).toBe(200);
+}
+
+it("two crew members see each other's finished runs live; an outsider's crew does not", async () => {
+  const seed = todayUtc();
+  const aName = `cw-a-${crypto.randomUUID().slice(0, 8)}`;
+  const bName = `cw-b-${crypto.randomUUID().slice(0, 8)}`;
+  const cName = `cw-c-${crypto.randomUUID().slice(0, 8)}`;
+  const [aToken, bToken, cToken] = await Promise.all([
+    createAccount(aName),
+    createAccount(bName),
+    createAccount(cName),
+  ]);
+
+  const invite = await makeCrew(aToken);
+  await join(bToken, invite);
+  // C is in a DIFFERENT crew, not crew-less: a crew-less viewer legitimately
+  // sees everyone (that is what /api/ghosts does for them), so they would be
+  // the wrong control here.
+  await join(cToken, await makeCrew(cToken));
+
+  // Sockets opened and subscribed BEFORE the run, and never touched again —
+  // same discipline as the first test in this file.
+  const [b, c] = await Promise.all([openSession(seed, bToken), openSession(seed, cToken)]);
+  try {
+    await postRun(aToken, 777.5, seed);
+
+    const isA = (m: Message): boolean => m.type === "ghost" && m.ghost?.username === aName;
+    const seenByB = await b.waitFor(isA, WITHIN_MS);
+    expect(seenByB.ghost).toMatchObject({ username: aName, distance: 777.5 });
+
+    // Already waited out B's arrival, so this window only has to be long
+    // enough to catch a push that was going to happen.
+    await expect(c.waitFor(isA, 400)).rejects.toThrow();
+  } finally {
+    b.close();
+    c.close();
+  }
+});
+
+it("a crew-less session still sees a crew member's run, exactly as /api/ghosts would", async () => {
+  const seed = todayUtc();
+  const authorName = `cw-author-${crypto.randomUUID().slice(0, 8)}`;
+  const authorToken = await createAccount(authorName);
+  await join(authorToken, await makeCrew(authorToken));
+
+  // The anonymous socket is the case the symmetric "crews must match" rule
+  // would have broken: GET /api/ghosts hands this viewer the author's run,
+  // so the socket has to as well.
+  const watcher = await openSession(seed);
+  try {
+    await postRun(authorToken, 888.5, seed);
+    const seen = await watcher.waitFor(
+      (m) => m.type === "ghost" && m.ghost?.username === authorName,
+      WITHIN_MS,
+    );
+    expect(seen.ghost).toMatchObject({ distance: 888.5 });
+  } finally {
+    watcher.close();
+  }
+});
+
+it("a subscribe's backfill is crew-scoped too", async () => {
+  const seed = todayUtc();
+  const memberName = `bf-in-${crypto.randomUUID().slice(0, 8)}`;
+  const outsiderName = `bf-out-${crypto.randomUUID().slice(0, 8)}`;
+  const [memberToken, outsiderToken] = await Promise.all([
+    createAccount(memberName),
+    createAccount(outsiderName),
+  ]);
+
+  await join(memberToken, await makeCrew(memberToken));
+  await postRun(memberToken, 640.5, seed);
+  await postRun(outsiderToken, 650.5, seed);
+
+  const session = await openSession(seed, memberToken);
+  try {
+    const first = session.received.find((m) => m.type === "ghosts")!;
+    const names = (first.ghosts ?? []).map((g) => g.username);
+    expect(names).toContain(memberName);
+    // The full list on subscribe is what a reconnect rebuilds from, so if it
+    // leaked the whole day, dropping and reconnecting would quietly widen a
+    // crew member's road back out.
+    expect(names).not.toContain(outsiderName);
   } finally {
     session.close();
   }

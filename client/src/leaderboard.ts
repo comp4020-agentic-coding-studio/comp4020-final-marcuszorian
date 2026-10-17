@@ -9,11 +9,21 @@
 // On a wide screen it sits down the left. On a narrow one it collapses into a
 // disclosure near the top, because a permanent side panel on a phone would eat
 // the road, which is the thing you are actually meant to be looking at.
+//
+// Since ADR 0011 this panel is also the one place a crew member can still see
+// the whole day. The road narrows to your crew unconditionally; the panel has
+// a global/crew switch. That means the panel and the road genuinely disagree
+// for a crew member on the global tab — deliberately, and it is why the global
+// tab does its own fetch rather than reading GhostLayer's road-scoped set.
+import { getGhosts } from "./net.ts";
 import type { Ghost } from "./net.ts";
 
 const NARROW = "(max-width: 700px)";
 /** Ranked rows shown before the list stops. */
 const TOP_N = 10;
+
+/** Which set of runs the panel is showing. "crew" only exists once you're in one. */
+export type Scope = "global" | "crew";
 
 export interface Ranked {
   ghost: Ghost;
@@ -41,15 +51,28 @@ export class Leaderboard {
   #list: HTMLElement;
   #count: HTMLElement;
   #empty: HTMLElement;
+  #tabs: HTMLElement;
   #viewer: string | null = null;
-  /** Last set received, kept so setViewer can re-render without a refetch. */
-  #ghosts: Ghost[] = [];
+  /** The road's set, pushed in by GhostLayer. Crew-scoped once you're in a crew. */
+  #roadGhosts: Ghost[] = [];
+  /** The whole day, fetched only when the global tab needs it. */
+  #globalGhosts: Ghost[] = [];
+  #scope: Scope = "global";
+  #inCrew = false;
+  #seed = "";
+  /** Guards against an in-flight global fetch landing after the day changed. */
+  #pending = 0;
 
   constructor(root: HTMLElement) {
     this.#details = root.querySelector("details")!;
     this.#list = root.querySelector(".leaderboard-list")!;
     this.#count = root.querySelector(".leaderboard-count")!;
     this.#empty = root.querySelector(".leaderboard-empty")!;
+    this.#tabs = root.querySelector(".leaderboard-tabs")!;
+
+    for (const button of this.#tabs.querySelectorAll<HTMLButtonElement>("button[data-scope]")) {
+      button.addEventListener("click", () => this.setScope(button.dataset.scope as Scope));
+    }
 
     // Open on a desktop, collapsed on a phone. Tracked live so rotating a
     // tablet doesn't leave a side panel jammed over the road.
@@ -59,22 +82,96 @@ export class Leaderboard {
     };
     apply();
     narrow.addEventListener("change", apply);
+    this.#syncTabs();
   }
 
   /** Who is playing, so their own run can be found and marked. */
   setViewer(username: string | null): void {
     if (username === this.#viewer) return;
     this.#viewer = username;
-    this.update(this.#ghosts);
+    this.#render();
+  }
+
+  /** Which day the global tab should fetch. Called wherever GhostLayer's seed is set. */
+  setSeed(seed: string): void {
+    if (seed === this.#seed) return;
+    this.#seed = seed;
+    this.#globalGhosts = [];
+    if (this.#scope === "global" && this.#inCrew) void this.#fetchGlobal();
+  }
+
+  /**
+   * Whether the viewer is in a crew. The tabs only exist once they are:
+   * without a crew the road IS the whole day, so a switch would offer two
+   * names for one list.
+   */
+  setInCrew(inCrew: boolean): void {
+    if (inCrew === this.#inCrew) return;
+    this.#inCrew = inCrew;
+    // Default to the crew when you join one — it is the set you are driving
+    // against, and the road has just narrowed to match.
+    this.#scope = inCrew ? "crew" : "global";
+    this.#syncTabs();
+    this.#render();
+  }
+
+  setScope(scope: Scope): void {
+    if (scope === this.#scope) return;
+    this.#scope = scope;
+    this.#syncTabs();
+    if (scope === "global" && this.#inCrew) void this.#fetchGlobal();
+    this.#render();
+  }
+
+  async #fetchGlobal(): Promise<void> {
+    const seed = this.#seed;
+    const token = ++this.#pending;
+    if (!seed) return;
+    try {
+      const ghosts = await getGhosts(seed, "global");
+      // Drop a result the day (or another fetch) has moved past.
+      if (seed !== this.#seed || token !== this.#pending) return;
+      this.#globalGhosts = ghosts;
+      this.#render();
+    } catch {
+      // Offline or a transient error — the panel keeps what it had, same as
+      // GhostLayer's own poll does.
+    }
+  }
+
+  #syncTabs(): void {
+    this.#tabs.hidden = !this.#inCrew;
+    for (const button of this.#tabs.querySelectorAll<HTMLButtonElement>("button[data-scope]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.scope === this.#scope));
+    }
+  }
+
+  /**
+   * The set that is currently on screen. Without a crew the road already IS
+   * the whole day, so the pushed set answers both scopes and nothing is
+   * fetched twice.
+   */
+  #current(): Ghost[] {
+    if (!this.#inCrew || this.#scope === "crew") return this.#roadGhosts;
+    return this.#globalGhosts;
   }
 
   update(ghosts: Ghost[]): void {
-    this.#ghosts = ghosts;
+    this.#roadGhosts = ghosts;
+    this.#render();
+  }
+
+  #render(): void {
+    const ghosts = this.#current();
     // The count is the whole day, not the ten shown — the panel is truncated,
     // the road is not, and saying "10" here would make the day look emptier
     // than it is.
     this.#count.textContent = String(ghosts.length);
     this.#empty.hidden = ghosts.length > 0;
+    this.#empty.textContent =
+      this.#inCrew && this.#scope === "crew"
+        ? "nobody in your crew has driven this day yet"
+        : "nobody has driven this day yet";
     this.#list.hidden = ghosts.length === 0;
 
     const ranked = standings(ghosts);

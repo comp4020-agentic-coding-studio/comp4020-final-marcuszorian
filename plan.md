@@ -216,11 +216,11 @@ redirect:
       `CrashBurst`'s point-sprite approach.
 
 ### Phase 4: Physics & control (`car.ts`)
-- [ ] Add forced-drift state to `CarState`; have `stepCar` apply it (same
+- [x] Add forced-drift state to `CarState`; have `stepCar` apply it (same
       ease/slide math as a normal lane change) and have it override, not
       queue behind, player `shiftLane` input while active.
-- [ ] Oil contact starts a forced drift instead of setting `crashed`.
-- [ ] Moving-barrier `x` is recomputed from the obstacle's motion parameters
+- [x] Oil contact starts a forced drift instead of setting `crashed`.
+- [x] Moving-barrier `x` is recomputed from the obstacle's motion parameters
       and the car's current `distance` every physics step, both for
       collision and for rendering.
 

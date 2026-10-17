@@ -30,6 +30,21 @@ export class CameraRig {
   }
 
   /**
+   * Forgets where the camera was, so the next updateCamera snaps into place
+   * instead of easing there.
+   *
+   * Needed since the title screen: its hero shot parks the camera in front of
+   * the car, and without this, starting a race would smoothly fly the camera
+   * from that portrait back to the chase position over a visible half-second,
+   * with the run already counting distance. A cut is correct here — the two
+   * shots are different places, not a move between them.
+   */
+  reset(): void {
+    this.#initialized = false;
+    this.#bank = 0;
+  }
+
+  /**
    * Moves `camera` toward (x, y, z), looking at (lookX, lookY, lookZ), with a
    * small trailing lag, and widens its FOV with speed. Returns nothing — the
    * camera is mutated directly, same as the rest of the render loop.

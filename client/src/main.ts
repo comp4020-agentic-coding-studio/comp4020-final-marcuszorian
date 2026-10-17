@@ -18,7 +18,23 @@ import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, LANE_WIDTH, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
 import { createPlayerCar, setPlayerGhostly, setPlayerTrim } from "./car-model.ts";
-import { Garage, skinColor } from "./garage.ts";
+import { Cosmetics } from "./cosmetics.ts";
+import { CrewScreen } from "./crew-screen.ts";
+import {
+  clearHeroFraming,
+  createHeadlights,
+  createHeroKeyLight,
+  frameHeroShot,
+  HERO_POSITION,
+  HERO_TURN,
+  setHeadlightsActive,
+} from "./hero-shot.ts";
+import { ScreenManager, showsHeroShot, simulates } from "./screens.ts";
+import type { Destination, Screen } from "./screens.ts";
+import { SettingsMenu } from "./settings.ts";
+import { Shop } from "./shop.ts";
+import { skinColor } from "./skins.ts";
+import { TitleScreen } from "./title-screen.ts";
 import { createBarrier } from "./barrier-model.ts";
 import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
@@ -36,15 +52,20 @@ const scoreEl = document.getElementById("score")!;
 const crashedEl = document.getElementById("crashed")!;
 const crashedTextEl = document.getElementById("crashedText")!;
 const restartButton = document.getElementById("restart") as HTMLButtonElement;
+const crashedHomeButton = document.getElementById("crashedHome") as HTMLButtonElement;
 const usernameModal = document.getElementById("usernameModal")!;
 const usernameForm = document.getElementById("usernameForm") as HTMLFormElement;
 const usernameInput = document.getElementById("username") as HTMLInputElement;
 const usernameError = document.getElementById("usernameError")!;
 const ghostLabelsEl = document.getElementById("ghostLabels")!;
-const fxToggle = document.getElementById("fxToggle") as HTMLButtonElement;
-const soundToggle = document.getElementById("soundToggle") as HTMLButtonElement;
 const leaderboardEl = document.getElementById("leaderboard")!;
-const garageEl = document.getElementById("garage")!;
+const hudEl = document.getElementById("hud")!;
+const titleEl = document.getElementById("titleScreen")!;
+const pauseEl = document.getElementById("pauseMenu")!;
+const crewEl = document.getElementById("crewScreen")!;
+const shopEl = document.getElementById("shopScreen")!;
+const cosmeticsEl = document.getElementById("cosmeticsScreen")!;
+const settingsEl = document.getElementById("settings")!;
 
 // ---- three.js scene ----
 const scene = new THREE.Scene();
@@ -82,32 +103,24 @@ scene.add(mountains);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const postfx = new PostFX(renderer, scene, camera, { reducedEffects: reducedMotion });
 
-function syncFxToggle(): void {
-  const reduced = !postfx.active;
-  fxToggle.setAttribute("aria-pressed", String(reduced));
-  fxToggle.textContent = reduced ? "effects reduced" : "reduce effects";
-}
-syncFxToggle();
-fxToggle.addEventListener("click", () => {
-  postfx.setActive(!postfx.active);
-  syncFxToggle();
-});
-
 // Sound is the audio twin of the archive aging, so it hangs off the same
 // `archiveAge(seed)` the post-processing reads (see audio.ts). A browser that
 // refuses an AudioContext just stays silent — every method is a no-op then.
 const audio = new AudioEngine();
-function syncSoundToggle(): void {
-  soundToggle.setAttribute("aria-pressed", String(audio.muted));
-  soundToggle.textContent = audio.muted ? "sound muted" : "mute sound";
-}
-syncSoundToggle();
-soundToggle.addEventListener("click", () => {
-  // Doubles as the unlock gesture: a player whose first act is this button
-  // still gets audio, not a context stuck in `suspended`.
-  audio.unlock();
-  audio.setMuted(!audio.muted);
-  syncSoundToggle();
+
+// One gear, every screen. These used to be two pills parked permanently over
+// the road; neither setting changed, only where you reach it from.
+const settings = new SettingsMenu(settingsEl, {
+  isEffectsReduced: () => !postfx.active,
+  setEffectsReduced: (reduced) => postfx.setActive(!reduced),
+  isMuted: () => audio.muted,
+  setMuted: (muted) => {
+    // Doubles as the unlock gesture: a player whose first act is this button
+    // still gets audio, not a context stuck in `suspended`.
+    audio.unlock();
+    audio.setMuted(muted);
+  },
+  onBlip: () => audio.uiBlip("select"),
 });
 
 function resize(): void {
@@ -172,6 +185,21 @@ roadMaterial.onBeforeCompile = (shader) => {
 const playerCar = createPlayerCar();
 scene.add(playerCar);
 
+// Real light pools at the headlights, for the title screen's hero shot. The
+// headlight meshes already glow on their own; these are what make them LIGHT
+// something, which is most of what sells a close-up. Parented to the car so
+// they travel with it, and switched off entirely during a run — a chase
+// camera never sees the pool, and that is where a 256MB box and a phone GPU
+// actually feel two extra lights.
+const headlights = createHeadlights();
+playerCar.add(headlights);
+
+// Lights the bodywork for the portrait. The scene's rim light is aimed for a
+// car seen from behind at speed; at a front-quarter close-up it leaves the
+// hull reading as a hole with wireframes floating in it.
+const heroKey = createHeroKeyLight();
+scene.add(heroKey, heroKey.target);
+
 const cameraRig = new CameraRig();
 const speedLines = new SpeedLines();
 scene.add(speedLines.mesh);
@@ -182,7 +210,26 @@ const activeBursts: CrashBurst[] = [];
 let seed = "";
 let car: CarState = createCar();
 let slide = 0; // normalised lateral velocity, for the cosmetic body roll
+// `running` means "a run is alive and has not crashed" — deliberately NOT
+// "the simulation is advancing". A paused run is still running; the screen
+// state is what decides whether time passes. Keeping them separate is what
+// stops a pause from being mistaken for a crash (and recording a score).
 let running = false;
+
+// Which full-screen surface is up. See screens.ts for why this is its own
+// enum rather than a pile of booleans.
+const screens = new ScreenManager(
+  {
+    hud: hudEl,
+    title: titleEl,
+    username: usernameModal,
+    pause: pauseEl,
+    crew: crewEl,
+    shop: shopEl,
+    cosmetics: cosmeticsEl,
+  },
+  (next) => onScreenChange(next),
+);
 
 const chunkObjects = new Map<number, THREE.Object3D>();
 // The leaderboard reads the ghost set the scene draws — which, until crews
@@ -255,18 +302,48 @@ function pruneChunks(currentIndex: number): void {
   }
 }
 
-function resetRun(): void {
+function clearChunks(): void {
   for (const obj of chunkObjects.values()) {
     scene.remove(obj);
     disposeChunk(obj);
   }
   chunkObjects.clear();
+}
+
+function resetRun(): void {
+  clearChunks();
   car = createCar();
   running = true;
   crashedEl.hidden = true;
+  // Straighten up out of the title screen's three-quarter pose: a car that
+  // started a run still turned 45° would drive down the road sideways.
+  playerCar.rotation.y = 0;
   setPlayerGhostly(playerCar, false);
   speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
+  scoreEl.textContent = "0 m";
+}
+
+/**
+ * Parks the car at the start line with no run in progress — what the title
+ * screen and the three destinations look at. The road is cleared rather than
+ * left standing: the hero shot is a portrait of a car, and a strip of road
+ * trailing off behind it at this camera angle reads as an abandoned race.
+ */
+function parkCar(): void {
+  clearChunks();
+  car = createCar();
+  running = false;
+  slide = 0;
+  crashedEl.hidden = true;
+  setPlayerGhostly(playerCar, false);
+  speedLines.mesh.visible = false;
+  playerCar.position.copy(HERO_POSITION);
+  playerCar.rotation.z = 0;
+  // Turned into the three-quarter view. Rotating the CAR rather than orbiting
+  // the camera is what lets "45° from the front" and "car on the left facing
+  // the menu" both be true at once — see hero-shot.ts.
+  playerCar.rotation.y = HERO_TURN;
 }
 
 function setSeed(nextSeed: string): void {
@@ -275,7 +352,13 @@ function setSeed(nextSeed: string): void {
   // The panel's global tab does its own day-scoped fetch now, so it has to be
   // told which day as well — see the comment on `leaderboard` above.
   leaderboard.setSeed(seed);
-  resetRun();
+  // A day change no longer restarts a run, because you can only change days
+  // from the title screen now — there is never a run in progress here.
+  parkCar();
+
+  // The archive's age reaches the title screen too, not just the road: step
+  // back a few weeks and the hero shot itself looks and sounds like the worn
+  // tape ADR 0002/0003 argue the archive is, before you have pressed start.
   const age = archiveAge(seed);
   postfx.setArchiveAge(age);
   audio.setArchiveAge(age);
@@ -288,14 +371,104 @@ function setSeed(nextSeed: string): void {
   }
   (mountains.children[0] as THREE.Mesh | undefined)?.geometry.dispose();
   mountains = createMountains(seed);
+  // A fresh object defaults to visible, and onScreenChange only ever hid the
+  // one it replaced — so without this, stepping to another day makes the
+  // skyline reappear behind the title screen's portrait.
+  mountains.visible = !showsHeroShot(screens.current);
   scene.add(mountains);
 }
 
 // ---- day selector ----
+// Lives on the title screen now: you pick the day you are about to drive,
+// rather than switching mid-run and silently restarting it.
 const daySelector = new DaySelector((nextSeed) => setSeed(nextSeed));
+
+// BEFORE setSeed, not after. ScreenManager starts on `boot` without firing
+// its own change handler, and setSeed builds a fresh mountain range that asks
+// the screen state whether to show itself. Called the other way round, the
+// very first frame is an unlit car against a full skyline, which then pops
+// into the portrait once something else triggers a change.
+onScreenChange("boot");
+
 setSeed(daySelector.seed);
 void daySelector.load();
 ghostLayer.start();
+
+// ---- screens ----
+/**
+ * Everything that has to follow the screen rather than a specific action:
+ * the hero lighting, the mountains/grid the title shot deliberately omits,
+ * and the one place a destination's data is refreshed on the way in.
+ */
+function onScreenChange(next: Screen): void {
+  const hero = showsHeroShot(next);
+  setHeadlightsActive(headlights, hero);
+  heroKey.visible = hero;
+  // Ghosts are parked at their crash distances along the road, and the hero
+  // camera looks back down it from 6m in front of the start line — so on a
+  // busy day they stack up directly behind the portrait. Hidden, not
+  // unsubscribed: they keep streaming in, so a race starts with them already
+  // in place.
+  ghostLayer.setVisible(!hero);
+  // Deliberately omitted from the hero shot (see plan.md): both are built to
+  // scroll past a moving camera, and a title screen's camera never moves —
+  // a frozen grid reads as a bug, not a backdrop. Sky, sun and fog carry the
+  // palette on their own.
+  grid.visible = !hero;
+  mountains.visible = !hero;
+  // CameraRig smooths toward wherever it last was. Coming back from a
+  // portrait to a chase shot (or the reverse) is a teleport, not a move, so
+  // the smoothing is reset rather than allowed to swing across the scene.
+  // The frustum offset the hero shot uses has to go too, or the whole road
+  // renders shifted left for the entire run.
+  if (!hero) {
+    cameraRig.reset();
+    clearHeroFraming(camera);
+  }
+
+  if (next === "title") void refreshTitleAccount();
+  if (next === "crew") void crewScreen.refresh();
+  if (next === "shop") void shop.refresh();
+  if (next === "cosmetics") void cosmetics.refresh();
+
+  // Any screen that isn't a live race means the engine isn't driving.
+  if (next !== "racing") audio.setDriving(false);
+}
+
+function startRace(): void {
+  audio.unlock();
+  resetRun();
+  screens.go("racing");
+}
+
+/** Abandons whatever run is on screen and returns to the title. */
+function goHome(): void {
+  // Deliberately no postRunEnd: quitting has never recorded a score, and a
+  // paused run that walks away shouldn't start. Only a crash records (ADR
+  // 0006's "the record closes at midnight" is about which DAY counts; this
+  // is about what counts as a finished run at all).
+  running = false;
+  parkCar();
+  screens.go("title");
+}
+
+function pauseRace(): void {
+  if (!screens.is("racing") || !running) return;
+  screens.go("paused");
+  audio.uiBlip("select");
+}
+
+function resumeRace(): void {
+  if (!screens.is("paused")) return;
+  screens.go("racing");
+  audio.uiBlip("select");
+}
+
+function openDestination(destination: Destination): void {
+  audio.unlock();
+  screens.go(destination);
+  audio.uiBlip("select");
+}
 
 // ---- input ----
 // Strict single-tap (ADR 0004): one gesture is one lane, whether that gesture
@@ -303,7 +476,7 @@ ghostLayer.start();
 // cannot drift apart — there is one definition of what a lane change is, and
 // one place the blip fires.
 function steer(dir: -1 | 1): void {
-  if (!running || !usernameModal.hidden) return;
+  if (!driving()) return;
   const before = car.lane;
   shiftLane(car, dir);
   // Only when the car actually moved: shiftLane refuses past the outer lanes,
@@ -311,13 +484,38 @@ function steer(dir: -1 | 1): void {
   if (car.lane !== before) audio.laneShift();
 }
 
+/** A live, advancing run: on the racing screen, not paused, not crashed. */
+function driving(): boolean {
+  return running && simulates(screens.current);
+}
+
 // `e.repeat` is the whole point of this guard — without it, holding Left walks
 // the car across the road at the OS key-repeat rate, which is neither a lane
-// change nor anything the player asked for. The running/modal check stays here
-// as well as in steer(): it has to come before preventDefault, or an arrow key
+// change nor anything the player asked for. The driving() check stays here as
+// well as in steer(): it has to come before preventDefault, or an arrow key
 // typed into the username field would stop moving the text caret.
 window.addEventListener("keydown", (e) => {
-  if (e.repeat || !running || !usernameModal.hidden) return;
+  if (e.repeat) return;
+
+  if (e.key === "Escape") {
+    // Settings first when it is open: one keypress, one effect. Otherwise
+    // Escape is the pause toggle, and only during a race — on the title
+    // screen or a destination there is no run to pause, so it does nothing
+    // rather than something surprising.
+    if (settings.open) {
+      settings.close();
+      e.preventDefault();
+    } else if (screens.is("racing") && running) {
+      pauseRace();
+      e.preventDefault();
+    } else if (screens.is("paused")) {
+      resumeRace();
+      e.preventDefault();
+    }
+    return;
+  }
+
+  if (!driving()) return;
   const dir = e.key === "ArrowLeft" || e.key === "a" ? -1 : e.key === "ArrowRight" || e.key === "d" ? 1 : 0;
   if (dir === 0) return;
   e.preventDefault();
@@ -364,7 +562,9 @@ window.addEventListener("pointercancel", endSwipe);
 restartButton.addEventListener("click", () => {
   audio.unlock();
   resetRun();
+  screens.go("racing");
 });
+crashedHomeButton.addEventListener("click", () => goHome());
 
 // Autoplay policy keeps the context suspended until a gesture, and the
 // username modal means the first one may be a keypress rather than a click.
@@ -372,16 +572,15 @@ for (const event of ["pointerdown", "keydown"]) {
   window.addEventListener(event, () => audio.unlock(), { once: true });
 }
 
-// ---- username gate ----
-// Who we are is the server's answer, not a guess from document.cookie — the
-// token cookie is httpOnly and was never visible here. Until the answer lands
-// the modal stays hidden and the game plays; a returning player sees no flash
-// of a form they already filled in, and a new one gets it a round trip later.
+// ---- title screen and its three destinations ----
 let account: Account | null = null;
 
-// ---- garage: coins, trim, crew ----
-const garage = new Garage(garageEl, {
-  onTrimChange: (skinId) => setPlayerTrim(playerCar, skinColor(skinId)),
+const titleScreen = new TitleScreen(titleEl, {
+  onStart: () => startRace(),
+  onDestination: (destination) => openDestination(destination),
+});
+
+const crewScreen = new CrewScreen(crewEl, {
   onCrewChange: (crew) => {
     // Joining narrows the road to the crew, unconditionally (ADR 0011). The
     // re-subscribe is what makes that happen without a reload — the server
@@ -393,21 +592,80 @@ const garage = new Garage(garageEl, {
   onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
 });
 
+const shop = new Shop(shopEl, {
+  onPurchase: (coins, skins) => {
+    // The balance moved and Cosmetics has a new row to offer, so both of the
+    // surfaces that show those get told rather than waiting to be reopened.
+    titleScreen.setCoins(coins);
+    cosmetics.render(skins);
+  },
+  onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
+});
+
+const cosmetics = new Cosmetics(cosmeticsEl, {
+  // The hero car and the race car are the same object, so equipping a trim
+  // is visible on the title screen the instant it is picked.
+  onTrimChange: (skinId) => setPlayerTrim(playerCar, skinColor(skinId)),
+  onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
+});
+
+// Back out of any destination to the title screen.
+for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-back]")) {
+  button.addEventListener("click", () => {
+    screens.go("title");
+    audio.uiBlip("select");
+  });
+}
+
+document.getElementById("resumeRun")!.addEventListener("click", () => resumeRace());
+document.getElementById("quitRun")!.addEventListener("click", () => goHome());
+
+/** Re-reads coins and the equipped trim, which a settled payout may have moved. */
+async function refreshTitleAccount(): Promise<void> {
+  if (!account) return;
+  try {
+    const me = await getAccount();
+    if (!me) return;
+    account = me;
+    titleScreen.setAccount(me.username, me.coins);
+    setPlayerTrim(playerCar, skinColor(me.equippedSkin));
+  } catch {
+    // Offline — the title screen keeps the numbers it had.
+  }
+}
+
+// ---- identity ----
+// Who we are is the server's answer, not a guess from document.cookie — the
+// token cookie is httpOnly and was never visible here. The TITLE SCREEN now
+// waits behind this answer, not just the username form: a new player is asked
+// for a name before they are shown anything else, and a returning one lands
+// straight on the title screen with no flash of a form they already filled in.
+
 // A `/crew/<token>` invite is a path, not a query parameter (ADR 0011). Read
 // once at boot, then replaceState back to "/" so a refresh can't double-join
 // — and held until an account exists, the same deferred-until-signed-in shape
 // postRunEnd already uses, because joining is a write and a write needs a
 // name.
 const inviteMatch = location.pathname.match(/^\/crew\/([^/]+)\/?$/);
-const pendingInvite = inviteMatch ? decodeURIComponent(inviteMatch[1]!) : null;
+let pendingInvite = inviteMatch ? decodeURIComponent(inviteMatch[1]!) : null;
 if (pendingInvite) history.replaceState(null, "", "/");
 
 function onSignedIn(found: Account): void {
   account = found;
   leaderboard.setViewer(found.username);
   setPlayerTrim(playerCar, skinColor(found.equippedSkin));
-  void garage.setSignedIn(true).then(() => {
-    if (pendingInvite) return garage.join(pendingInvite);
+  titleScreen.setAccount(found.username, found.coins);
+  screens.go("title");
+
+  void crewScreen.setSignedIn(true).then(() => {
+    if (!pendingInvite) return;
+    const token = pendingInvite;
+    pendingInvite = null; // one attempt per load, success or refusal
+    // Land on the crew screen for it: a join that silently succeeded (or was
+    // refused as expired) behind the title screen would be an invite link
+    // that appears to do nothing.
+    screens.go("crew");
+    return crewScreen.join(token);
   });
 }
 
@@ -417,14 +675,18 @@ getAccount()
       onSignedIn(found);
     } else {
       leaderboard.setViewer(null);
-      usernameModal.hidden = false;
+      screens.go("username");
+      usernameInput.focus();
     }
   })
   .catch(() => {
     // Couldn't ask (offline, server down). Don't demand a username that may
-    // already be taken by this very player — let them drive. The run post
-    // below is attempted regardless and the server decides whether it counts.
+    // already be taken by this very player — show the title screen and let
+    // them drive. A run post is attempted regardless and the server decides
+    // whether it counts.
+    screens.go("title");
   });
+
 const usernameSubmit = usernameForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
 let submittingAccount = false;
 usernameForm.addEventListener("submit", (e) => {
@@ -444,18 +706,14 @@ usernameForm.addEventListener("submit", (e) => {
 
   postAccount(name)
     .then((created) => {
-      onSignedIn(created); // picks up a queued /crew/<token> invite, if there was one
-      usernameModal.hidden = true;
-      // Start them at 0: the loop was running while we asked the server who
-      // they were, so without this their first run begins a metre or two in.
-      resetRun();
+      onSignedIn(created); // moves to the title screen, and picks up a queued invite
     })
     .catch((err: Error) => {
       // If this browser already has an account (the exact race above, or a
       // retry after a success that didn't visibly register), there's
       // nothing wrong to report — just proceed.
       if (account) {
-        usernameModal.hidden = true;
+        screens.go("title");
         return;
       }
       usernameError.textContent = err.message;
@@ -484,7 +742,7 @@ function frame(now: number): void {
   lastTime = now;
   elapsed += dt;
 
-  if (running && usernameModal.hidden) {
+  if (driving()) {
     const currentIndex = Math.floor(car.distance / CHUNK_LENGTH);
     const nearby = [
       ...(chunkObjects.has(currentIndex) ? chunkFor(seed, currentIndex).obstacles : []),
@@ -540,9 +798,9 @@ function frame(now: number): void {
               void daySelector.load();
               // Any API request can be the one that settles a closed day
               // (ADR 0010: there is no scheduler, ordinary traffic does it),
-              // so the balance may have just moved. Cheap, and the only
-              // moment a player is looking for a change in it.
-              if (account) void garage.refreshSkins();
+              // so the balance may have just moved. The title screen reads
+              // it on the way in, so this only has to keep `account` fresh.
+              void refreshTitleAccount();
             }
           })
           .catch(() => {
@@ -552,24 +810,39 @@ function frame(now: number): void {
     }
   }
 
-  const x = car.offset;
-  const z = -car.distance;
   const speed = speedAt(car.distance);
-  playerCar.position.set(x, 0.5, z);
-  cameraRig.updateCarBank(playerCar, running ? slide : 0, dt);
-  cameraRig.updateCamera(
-    camera,
-    dt,
-    new THREE.Vector3(x, 4.5, z + 7),
-    new THREE.Vector3(x, 0.5, z - 10),
-    speed,
-  );
-  if (!reducedMotion) camera.position.add(cameraShake.update(dt, elapsed));
+  const hero = showsHeroShot(screens.current);
+
+  if (hero) {
+    // A parked portrait: no chase, no lag, no shake, no speed-widened FOV.
+    // The car stays where parkCar() put it.
+    frameHeroShot(camera, window.innerWidth, window.innerHeight);
+  } else {
+    const x = car.offset;
+    const z = -car.distance;
+    playerCar.position.set(x, 0.5, z);
+    // Banking follows the slide only while time is passing — a paused car
+    // holds its roll instead of unwinding it, so resuming picks up mid-slide
+    // rather than snapping upright first.
+    cameraRig.updateCarBank(playerCar, driving() ? slide : 0, dt);
+    cameraRig.updateCamera(
+      camera,
+      dt,
+      new THREE.Vector3(x, 4.5, z + 7),
+      new THREE.Vector3(x, 0.5, z - 10),
+      speed,
+    );
+    if (!reducedMotion) camera.position.add(cameraShake.update(dt, elapsed));
+  }
 
   updateSky(sky, camera);
   updateSun(sun, camera);
-  updateGrid(grid, camera);
-  updateMountains(mountains, camera);
+  // Both are hidden on the hero shot (see onScreenChange), so there is
+  // nothing to scroll.
+  if (!hero) {
+    updateGrid(grid, camera);
+    updateMountains(mountains, camera);
+  }
   // Name tags reach exactly as far as the road does: LOOKAHEAD_CHUNKS is the
   // number of chunks built ahead of the car, so this is the span that is
   // always drawn (the car sits somewhere inside its own chunk, so the real
@@ -577,18 +850,23 @@ function frame(now: number): void {
   ghostLayer.update(dt, camera, window.innerWidth, window.innerHeight, LOOKAHEAD_CHUNKS * CHUNK_LENGTH);
 
   // Derived from the same condition that gates stepping, rather than latched
-  // at reset and crash, so the modal, a crash and a day switch all agree.
-  const driving = running && !!usernameModal.hidden;
-  if (driving !== audioDriving) {
-    audioDriving = driving;
-    audio.setDriving(driving);
+  // at reset and crash, so a pause, a crash, the username prompt and a day
+  // switch all agree without each having to remember to say so.
+  const isDriving = driving();
+  if (isDriving !== audioDriving) {
+    audioDriving = isDriving;
+    audio.setDriving(isDriving);
   }
 
   const speedFactor = Math.max(0, Math.min(1.5, (speed - 9) / 30));
   if (speedLines.mesh.visible) speedLines.update(dt, speedFactor, camera.position);
   // The engine filter and the ghost swell both want 0..1; speedFactor runs to
   // 1.5 so the speed lines keep thickening past the point the audio tops out.
-  audio.update(dt, Math.min(1, speedFactor), running ? ghostLayer.nearness(car.distance, car.offset) : 0);
+  audio.update(
+    dt,
+    Math.min(1, speedFactor),
+    isDriving ? ghostLayer.nearness(car.distance, car.offset) : 0,
+  );
 
   for (let i = activeBursts.length - 1; i >= 0; i--) {
     if (!activeBursts[i]!.update(dt)) {

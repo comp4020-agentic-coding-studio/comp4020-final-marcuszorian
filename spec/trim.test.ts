@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type * as THREE from "three";
 import { createPlayerCar, setPlayerGhostly, setPlayerTrim } from "../client/src/car-model.ts";
-import { skinColor } from "../client/src/garage.ts";
+import { skinColor } from "../client/src/skins.ts";
 import { palette } from "../client/src/palette.ts";
 
 // Car skins are the one cosmetic change that touches a material the crash

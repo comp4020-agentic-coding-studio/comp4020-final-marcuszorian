@@ -190,50 +190,6 @@
           0 0 28px rgba(254, 222, 93, 0.25);
       }
 
-      #day {
-        position: absolute;
-        top: 16px;
-        right: 16px;
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        background: color-mix(in srgb, var(--surface) 70%, transparent);
-        border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
-        border-radius: 999px;
-        padding: 6px 8px;
-        backdrop-filter: blur(6px);
-      }
-      #dayLabel {
-        color: var(--pink);
-        min-width: 4.5em;
-        text-align: center;
-      }
-      #day button {
-        background: transparent;
-        border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
-        color: var(--cyan);
-        border-radius: 999px;
-        width: 26px;
-        height: 26px;
-        line-height: 1;
-        cursor: pointer;
-        font-size: 14px;
-        transition:
-          box-shadow 0.15s ease,
-          color 0.15s ease;
-      }
-      #day button:not(:disabled):hover {
-        color: var(--hotWhite);
-        box-shadow: 0 0 10px var(--cyan);
-      }
-      #day button:disabled {
-        opacity: 0.3;
-        cursor: default;
-      }
-
       button:focus-visible,
       input:focus-visible {
         outline: 2px solid var(--laserCyan);
@@ -364,8 +320,14 @@
           0 0 8px var(--red),
           0 0 20px rgba(254, 68, 80, 0.5);
       }
-      #crashed button {
+      .crashed-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        align-items: center;
         margin-top: 16px;
+      }
+      #restart {
         padding: 10px 20px;
         border-radius: 8px;
         border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
@@ -377,35 +339,75 @@
         box-shadow: 0 0 16px rgba(5, 217, 232, 0.35);
         transition: box-shadow 0.15s ease;
       }
-      #crashed button:hover {
+      #restart:hover {
         box-shadow: 0 0 26px rgba(5, 217, 232, 0.55);
       }
 
-      /* Low-spec / "this is too much" fallback — drops the post-processing
-         composer back to a plain render (see postfx.ts). Deliberately small
-         and out of the way: it's an escape hatch, not a feature. */
-      #fxToggle,
-      #soundToggle {
-        position: absolute;
-        bottom: 16px;
+      /* ---- settings: one gear, bottom-right, on every screen ----
+         These two toggles used to be standalone pills parked permanently over
+         the road. Neither setting changed — only where you reach it. Living
+         outside #hud is deliberate: #hud is hidden on every screen except the
+         race, and settings has to outlive that. */
+      #settings {
+        position: fixed;
         right: 16px;
-        background: color-mix(in srgb, var(--surface) 70%, transparent);
-        border: 1px solid color-mix(in srgb, var(--lilac) 40%, transparent);
-        color: var(--lilac);
-        border-radius: 999px;
-        padding: 6px 12px;
-        font-size: 12px;
-        cursor: pointer;
+        bottom: 16px;
+        z-index: 3; /* above the title/destination screens, which are z-index 2 */
       }
-      #fxToggle[aria-pressed="true"],
-      #soundToggle[aria-pressed="true"] {
+      #settingsButton {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        cursor: pointer;
+        color: var(--lilac);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        border: 1px solid color-mix(in srgb, var(--lilac) 40%, transparent);
+        backdrop-filter: blur(6px);
+        transition:
+          color 0.15s ease,
+          box-shadow 0.15s ease,
+          border-color 0.15s ease;
+      }
+      #settingsButton:hover,
+      #settingsButton[aria-expanded="true"] {
+        color: var(--laserCyan);
+        border-color: color-mix(in srgb, var(--cyan) 60%, transparent);
+        box-shadow: 0 0 16px rgba(5, 217, 232, 0.4);
+      }
+      #settingsButton svg {
+        width: 21px;
+        height: 21px;
+        fill: currentColor;
+      }
+      #settingsPanel {
+        position: absolute;
+        right: 0;
+        bottom: 52px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        min-width: 160px;
+      }
+      #settingsPanel[hidden] {
+        display: none;
+      }
+      #settingsPanel button {
+        font: inherit;
+        font-size: 12px;
+        text-align: left;
+        padding: 7px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: var(--lilac);
+        background: color-mix(in srgb, var(--void) 55%, transparent);
+        border: 1px solid color-mix(in srgb, var(--lilac) 32%, transparent);
+      }
+      #settingsPanel button[aria-pressed="true"] {
         color: var(--cyan);
         border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
-      }
-      /* Sits immediately left of the effects pill. Offset rather than a flex
-         row because both were already absolutely positioned to the corner. */
-      #soundToggle {
-        right: 142px;
       }
       /* ---- the day's leaderboard ----
          Ranked standings for the day. This project refused a leaderboard for a
@@ -577,176 +579,382 @@
         }
       }
 
-      /* ---- the garage: coins, trim colours, crew ----
-         Coin rewards for a closed day's rank (doc/adr/0010-coin-economy.md)
-         and crews with invite links (doc/adr/0011-crews.md). Sits below the
-         leaderboard in the same left column, and like it is sized to its
-         content rather than inset:0 — anything inside #hud inherits
-         pointer-events:auto and must never cover road it doesn't draw on. */
-      #garage {
-        position: absolute;
-        left: 16px;
-        bottom: 16px;
-        width: 190px;
-        max-width: calc(100vw - 32px);
-        font-size: 12px;
+      /* ---- the title screen ----
+         Car on the left, menu on the right. The car is the REAL car in the
+         real scene (hero-shot.ts frames it); this panel just leaves its half
+         empty so the canvas shows through. Hence pointer-events:none on the
+         section with only the menu column opting back in — the art half must
+         never swallow a click, and on a phone the menu sits ON TOP of the
+         car rather than beside it, where nothing would fit. */
+      .screen,
+      #titleScreen {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        box-sizing: border-box;
       }
-      #garage[hidden] {
+      .screen[hidden],
+      #titleScreen[hidden] {
         display: none;
       }
-      #garage details {
-        background: color-mix(in srgb, var(--surface) 72%, transparent);
-        border: 1px solid color-mix(in srgb, var(--violet) 30%, transparent);
-        border-radius: 8px;
-        padding: 8px 10px;
-        backdrop-filter: blur(3px);
+
+      #titleScreen {
+        display: flex;
+        pointer-events: none;
+        padding: 16px;
+        padding-bottom: 72px; /* clear of the settings gear */
       }
-      #garage summary {
-        cursor: pointer;
+      .title-art {
+        flex: 1 1 50%;
+      }
+      .title-menu {
+        pointer-events: auto;
+        flex: 1 1 50%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 14px;
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .title-logo {
+        height: 72px;
+        width: auto;
+        max-width: 100%;
+        filter: drop-shadow(0 1px 1px rgba(5, 1, 20, 0.9)) drop-shadow(0 0 10px rgba(255, 42, 109, 0.55))
+          drop-shadow(0 0 20px rgba(5, 217, 232, 0.3));
+        user-select: none;
+      }
+      .title-who {
+        margin: 0;
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+      }
+      .title-name {
+        color: var(--pink);
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 14em;
+      }
+      /* Gold is first place on the leaderboard and the score's colour; a coin
+         balance is the same kind of number, so it reads consistently. */
+      .title-wallet {
         color: var(--lilac);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        font-size: 10px;
-        list-style: none;
       }
-      #garage summary::-webkit-details-marker {
-        display: none;
-      }
-      #garage summary::after {
-        content: " ▾";
-        opacity: 0.6;
-      }
-      #garage details[open] summary::after {
-        content: " ▴";
-      }
-      /* Gold is "first place" on the leaderboard and the score's colour; a
-         coin balance is the same kind of number, so it reads consistently. */
-      .garage-coins {
+      .title-coins,
+      .shop-coins {
         color: var(--gold);
         font-weight: 700;
+        font-variant-numeric: tabular-nums;
       }
-      .garage-skins {
-        list-style: none;
-        margin: 8px 0 0;
-        padding: 0;
-        max-height: 30vh;
+      .title-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+      }
+      .title-button {
+        font: inherit;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: lowercase;
+        text-align: left;
+        padding: 12px 18px;
+        border-radius: 10px;
+        cursor: pointer;
+        color: var(--hotWhite);
+        background: color-mix(in srgb, var(--raised) 80%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 45%, transparent);
+        backdrop-filter: blur(6px);
+        transition:
+          box-shadow 0.15s ease,
+          border-color 0.15s ease,
+          transform 0.12s ease;
+      }
+      .title-button:hover {
+        border-color: color-mix(in srgb, var(--cyan) 60%, transparent);
+        box-shadow: 0 0 20px rgba(5, 217, 232, 0.3);
+        transform: translateX(3px);
+      }
+      /* Start Race is what you came for, so it gets the magenta the car wears
+         and everything else stays quiet. */
+      .title-button.is-primary {
+        background: linear-gradient(135deg, var(--magenta), var(--violet));
+        border-color: transparent;
+        box-shadow: 0 0 22px rgba(255, 42, 109, 0.45);
+      }
+      .title-button.is-primary:hover {
+        box-shadow: 0 0 34px rgba(255, 42, 109, 0.65);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .title-button:hover {
+          transform: none;
+        }
+      }
+
+      /* The day stepper, moved here from the race HUD: you pick the day you
+         are about to drive rather than switching mid-run. */
+      #day {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--surface) 70%, transparent);
+        border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
+        border-radius: 999px;
+        padding: 6px 8px;
+        backdrop-filter: blur(6px);
+      }
+      #dayLabel {
+        color: var(--pink);
+        min-width: 4.5em;
+        text-align: center;
+      }
+      #day button {
+        background: transparent;
+        border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
+        color: var(--cyan);
+        border-radius: 999px;
+        width: 26px;
+        height: 26px;
+        line-height: 1;
+        cursor: pointer;
+        font-size: 14px;
+        transition:
+          box-shadow 0.15s ease,
+          color 0.15s ease;
+      }
+      #day button:not(:disabled):hover {
+        color: var(--hotWhite);
+        box-shadow: 0 0 10px var(--cyan);
+      }
+      #day button:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+
+      /* On a phone there is no "left half" to speak of — hero-shot.ts centres
+         the car instead, and the menu sits over it on a scrim so the text
+         stays legible against whatever the car and sky are doing. */
+      @media (max-width: 760px) {
+        #titleScreen {
+          flex-direction: column;
+          justify-content: flex-end;
+        }
+        .title-art {
+          flex: 1 1 auto;
+        }
+        .title-menu {
+          flex: none;
+          width: 100%;
+          max-width: none;
+          align-items: stretch;
+          background: linear-gradient(to top, var(--void) 55%, transparent);
+          padding-top: 28px;
+        }
+        .title-logo {
+          height: 54px;
+          align-self: center;
+        }
+      }
+
+      /* ---- pause ---- */
+      .pause-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 26px;
+        min-width: 240px;
+        max-width: calc(100vw - 32px);
+        box-sizing: border-box;
+      }
+      .pause-title {
+        margin: 0 0 4px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--lilac);
+      }
+      .pause-panel .title-button {
+        text-align: center;
+      }
+
+      /* ---- crew / shop / cosmetics: full destinations, not corner widgets ---- */
+      .screen {
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        padding-bottom: 72px; /* clear of the settings gear */
+        background: color-mix(in srgb, var(--void) 72%, transparent);
+        backdrop-filter: blur(4px);
+      }
+      .screen-inner {
+        width: min(480px, 100%);
+        max-height: 100%;
         overflow-y: auto;
+        padding: 22px 24px;
+        box-sizing: border-box;
       }
-      .garage-skin {
+      .screen-head {
         display: flex;
         align-items: center;
-        gap: 7px;
-        padding: 3px 0;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .screen-head h2 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--lilac);
+      }
+      .screen-back {
+        font: inherit;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        padding: 5px 12px;
+        border-radius: 999px;
+        cursor: pointer;
+        color: var(--cyan);
+        background: transparent;
+        border: 1px solid color-mix(in srgb, var(--cyan) 45%, transparent);
+      }
+      .screen-back:hover {
+        color: var(--hotWhite);
+        box-shadow: 0 0 12px rgba(5, 217, 232, 0.4);
+      }
+      .screen-hint {
+        margin: 0 0 12px;
+        color: var(--lilac);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .screen-status {
+        margin: 12px 0 0;
+        min-height: 1.2em;
+        font-size: 12px;
+        line-height: 1.4;
+        word-break: break-word;
+        color: var(--mint);
+      }
+      .screen-status[data-kind="error"] {
+        color: var(--red);
+      }
+      .screen-action {
+        font: inherit;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 6px 14px;
+        border-radius: 7px;
+        cursor: pointer;
+        flex: none;
+        color: var(--hotWhite);
+        background: color-mix(in srgb, var(--violet) 28%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent);
+      }
+      .screen-action:hover:not(:disabled) {
+        box-shadow: 0 0 14px rgba(140, 82, 255, 0.45);
+      }
+      .screen-action:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+
+      .skin-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .skin-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 0;
+        border-bottom: 1px solid color-mix(in srgb, var(--violet) 16%, transparent);
+      }
+      .skin-row:last-child {
+        border-bottom: none;
       }
       /* The swatch IS the skin: its colour comes from the same palette token
          the car's trim material does (a skin's id is a palette key), so the
          dot and the car can't disagree about what you bought. */
-      .garage-swatch {
-        width: 10px;
-        height: 10px;
+      .skin-swatch {
+        width: 13px;
+        height: 13px;
         border-radius: 50%;
         flex: none;
       }
-      .garage-skin-name {
+      .skin-name {
         color: var(--pink);
+        font-size: 13px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         flex: 1 1 auto;
       }
-      .garage-skin.is-equipped .garage-skin-name {
+      .skin-row.is-equipped .skin-name {
         color: var(--mint);
       }
-      .garage-action {
-        font: inherit;
-        font-size: 10px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        padding: 2px 7px;
-        cursor: pointer;
-        flex: none;
-        color: var(--hotWhite);
-        background: color-mix(in srgb, var(--violet) 26%, transparent);
-        border: 1px solid color-mix(in srgb, var(--violet) 55%, transparent);
-        border-radius: 5px;
-      }
-      .garage-action:disabled {
-        cursor: default;
-        opacity: 0.45;
-      }
       /* A price, not a verb — warm so it reads as a cost next to the balance. */
-      .garage-buy {
+      .skin-buy {
         color: var(--gold);
         background: transparent;
         border-color: color-mix(in srgb, var(--gold) 40%, transparent);
         font-variant-numeric: tabular-nums;
       }
-      .garage-crew {
-        margin-top: 10px;
-        border-top: 1px solid color-mix(in srgb, var(--violet) 22%, transparent);
-        padding-top: 8px;
-      }
-      .garage-crew-name {
-        margin: 0;
-        color: var(--laserCyan);
-        font-weight: 700;
-        letter-spacing: 0.04em;
-      }
-      .garage-hint {
-        margin: 3px 0 0;
-        color: var(--lilac);
-        font-size: 10px;
-        line-height: 1.4;
-      }
-      .garage-crew-form {
-        display: flex;
-        gap: 4px;
-        margin-top: 6px;
-      }
-      .garage-crew-form input {
-        font: inherit;
-        font-size: 11px;
-        min-width: 0;
-        flex: 1 1 auto;
-        padding: 2px 6px;
-        color: var(--hotWhite);
-        background: color-mix(in srgb, var(--void) 70%, transparent);
-        border: 1px solid color-mix(in srgb, var(--cyan) 30%, transparent);
-        border-radius: 5px;
-      }
-      .garage-invite {
-        margin-top: 7px;
-        width: 100%;
-      }
-      .garage-status {
-        margin: 7px 0 0;
-        font-size: 10px;
-        line-height: 1.4;
-        word-break: break-all; /* a pasted invite URL, when the clipboard is refused */
-        color: var(--mint);
-      }
-      .garage-status[data-kind="error"] {
-        color: var(--red);
+      .shop-wallet {
+        white-space: nowrap;
       }
 
-      /* On a phone the garage joins the leaderboard as a disclosure near the
-         top rather than floating at the bottom, where it would sit over the
-         crash panel and the road. Same reasoning as #leaderboard above. */
-      @media (max-width: 700px) {
-        #garage {
-          left: 16px;
-          right: 16px;
-          bottom: auto;
-          top: 118px;
-          width: auto;
-          max-width: none;
-        }
-        #garage details {
-          background: color-mix(in srgb, var(--surface) 94%, transparent);
-        }
-        .garage-skins {
-          max-height: 26vh;
-        }
+      .crew-name {
+        margin: 0 0 4px;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--laserCyan);
+      }
+      .crew-form {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .crew-form input {
+        font: inherit;
+        font-size: 14px;
+        min-width: 0;
+        flex: 1 1 auto;
+        padding: 8px 10px;
+        border-radius: 7px;
+        color: var(--hotWhite);
+        background: color-mix(in srgb, var(--void) 70%, transparent);
+        border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
+      }
+      /* The invite link is always on screen, not only in the clipboard — a
+         refused clipboard (insecure origin, permissions) still leaves
+         something to select by hand. */
+      .crew-link {
+        margin: 10px 0;
+        padding: 8px 10px;
+        border-radius: 7px;
+        font-size: 11px;
+        line-height: 1.5;
+        word-break: break-all;
+        color: var(--lilac);
+        background: color-mix(in srgb, var(--void) 60%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 24%, transparent);
       }
 
     </style>
@@ -757,11 +965,6 @@
       <div id="vignette"></div>
       <img id="logo" class="flicker" src="/logo.png" alt="" aria-hidden="true" />
       <div id="score">0 m</div>
-      <div id="day">
-        <button id="prevDay" aria-label="previous day">&larr;</button>
-        <span id="dayLabel">today</span>
-        <button id="nextDay" aria-label="next day">&rarr;</button>
-      </div>
       <section id="leaderboard" aria-label="today's leaderboard">
         <details>
           <summary>
@@ -778,23 +981,118 @@
           <ul class="leaderboard-list" hidden></ul>
         </details>
       </section>
-      <!-- Coins, trim colours and your crew: the things about YOU rather than
-           about the road. Hidden until the server says who you are. -->
-      <section id="garage" aria-label="garage" hidden>
-        <details>
-          <summary>garage <span class="garage-coins">0</span></summary>
-          <ul class="garage-skins"></ul>
-          <div class="garage-crew"></div>
-          <p class="garage-status" role="status"></p>
-        </details>
-      </section>
       <div id="ghostLabels"></div>
       <div id="crashed" class="panel" hidden>
         <div id="crashedText"></div>
-        <button id="restart">drive again</button>
+        <div class="crashed-actions">
+          <button id="restart">drive again</button>
+          <button id="crashedHome" type="button" class="screen-action">home</button>
+        </div>
       </div>
-      <button id="soundToggle" type="button" aria-pressed="false">mute sound</button>
-      <button id="fxToggle" type="button" aria-pressed="false">reduce effects</button>
+    </div>
+
+    <!-- ---- the title screen ----
+         The car on the left is NOT drawn here: it is the real car in the real
+         scene, framed by hero-shot.ts, visible through this panel's own empty
+         left half. That is why the whole screen is pointer-events:none with
+         only the right column opting back in — the left half has to let the
+         canvas show through, and must not swallow anything. -->
+    <section id="titleScreen" aria-label="title screen" hidden>
+      <div class="title-art" aria-hidden="true"></div>
+      <div class="title-menu">
+        <img class="title-logo flicker" src="/logo.png" alt="nightly build" />
+        <p class="title-who">
+          <span class="title-name"></span>
+          <span class="title-wallet"><span class="title-coins">0</span> coins</span>
+        </p>
+
+        <!-- The day you are about to drive. Moved here from the race HUD:
+             picking before you start replaces switching mid-run, which
+             silently restarted the run every time it was touched. -->
+        <div id="day" aria-label="which day to drive">
+          <button id="prevDay" aria-label="previous day">&larr;</button>
+          <span id="dayLabel">today</span>
+          <button id="nextDay" aria-label="next day">&rarr;</button>
+        </div>
+
+        <nav class="title-buttons">
+          <button id="startRace" type="button" class="title-button is-primary">start race</button>
+          <button type="button" class="title-button" data-destination="crew">join crew</button>
+          <button type="button" class="title-button" data-destination="shop">shop</button>
+          <button type="button" class="title-button" data-destination="cosmetics">cosmetics</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- ---- pause ----
+         Sits over the road rather than replacing it, so the run you are about
+         to resume is still visibly there behind it. -->
+    <section id="pauseMenu" class="modal" aria-label="paused" hidden>
+      <div class="panel pause-panel">
+        <h2 class="pause-title">paused</h2>
+        <button id="resumeRun" type="button" class="title-button is-primary">resume</button>
+        <button id="quitRun" type="button" class="title-button">home</button>
+        <p class="screen-hint">leaving now discards this run — only a crash records a distance.</p>
+      </div>
+    </section>
+
+    <!-- ---- the three destinations ---- -->
+    <section id="crewScreen" class="screen" aria-label="join crew" hidden>
+      <div class="screen-inner panel">
+        <header class="screen-head">
+          <h2>crew</h2>
+          <button type="button" class="screen-back" data-back>back</button>
+        </header>
+        <div class="crew-body"></div>
+        <p class="crew-status screen-status" role="status"></p>
+      </div>
+    </section>
+
+    <section id="shopScreen" class="screen" aria-label="shop" hidden>
+      <div class="screen-inner panel">
+        <header class="screen-head">
+          <h2>shop</h2>
+          <button type="button" class="screen-back" data-back>back</button>
+        </header>
+        <p class="screen-hint">
+          place in a day's top ten and it pays out once that day closes.
+          <span class="shop-wallet"><span class="shop-coins">0</span> coins</span>
+        </p>
+        <p class="shop-empty screen-hint" hidden>every trim is yours — pick one in cosmetics.</p>
+        <ul class="shop-list skin-list"></ul>
+        <p class="shop-status screen-status" role="status"></p>
+      </div>
+    </section>
+
+    <section id="cosmeticsScreen" class="screen" aria-label="cosmetics" hidden>
+      <div class="screen-inner panel">
+        <header class="screen-head">
+          <h2>cosmetics</h2>
+          <button type="button" class="screen-back" data-back>back</button>
+        </header>
+        <p class="cosmetics-hint screen-hint" hidden>
+          magenta is yours for free. buy more trims in the shop.
+        </p>
+        <ul class="cosmetics-list skin-list"></ul>
+        <p class="cosmetics-status screen-status" role="status"></p>
+      </div>
+    </section>
+
+    <!-- ---- settings: one gear, every screen ----
+         Outside #hud deliberately: #hud is hidden on every screen but the
+         race, and this has to outlive that. -->
+    <div id="settings">
+      <button id="settingsButton" type="button" aria-label="settings" aria-expanded="false" aria-haspopup="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path
+            d="M12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.4h-4l-.3 2.6a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.3 2.6h4l.3-2.6a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6Z"
+          />
+        </svg>
+      </button>
+      <div id="settingsPanel" class="panel" role="group" aria-label="settings" hidden>
+        <button id="soundToggle" type="button" aria-pressed="false">mute sound</button>
+        <button id="fxToggle" type="button" aria-pressed="false">reduce effects</button>
+      </div>
     </div>
     <div id="usernameModal" class="modal" hidden>
       <form id="usernameForm" class="panel">

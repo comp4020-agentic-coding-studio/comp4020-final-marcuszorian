@@ -2,6 +2,11 @@
 // ghosts instead of only ever playing "today". The API/schema already treat
 // every day symmetrically (doc/adr/0002-daily-seeded-archive.md) — this is
 // just the client control for it.
+//
+// It now lives on the TITLE SCREEN rather than in the race HUD, which means
+// you choose a day before you drive it instead of switching mid-run. The old
+// in-race stepper quietly restarted the run on the new day's track every time
+// it was touched; picking before you start says the same thing out loud.
 import { getDays } from "./net.ts";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;

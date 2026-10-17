@@ -46,6 +46,7 @@ export class GhostLayer {
   #clock = 0;
   #live: LiveFeed;
   #liveOpen = false;
+  #visible = true;
   #onChange: ((ghosts: Ghost[]) => void) | undefined;
 
   constructor(
@@ -100,6 +101,26 @@ export class GhostLayer {
     if (this.#timer) clearTimeout(this.#timer);
     this.#live.dispose();
     this.#clear();
+  }
+
+  /**
+   * Shows or hides every ghost car and name tag without unsubscribing.
+   *
+   * The title screen needs this: ghosts are parked at their crash distances
+   * along the road, and the hero camera sits 6m in front of the start line
+   * looking back down it — so a day with traffic puts a wall of other
+   * people's cars directly behind the portrait. They are still streaming in
+   * over the socket the whole time, which is the point of not tearing the
+   * layer down: stepping into a race shows them already in place.
+   */
+  setVisible(visible: boolean): void {
+    for (const entry of this.#entries.values()) {
+      entry.mesh.visible = visible;
+      // Labels are HTML, not scene objects, so they need saying separately —
+      // update() will keep them hidden while this is false.
+      if (!visible) entry.label.hidden = true;
+    }
+    this.#visible = visible;
   }
 
   #setLiveState(open: boolean): void {
@@ -191,6 +212,9 @@ export class GhostLayer {
     const color = new THREE.Color().setHSL(lavenderHsl.h + hueOffset, Math.min(1, lavenderHsl.s + 0.1), lavenderHsl.l);
     const mesh = createGhostCar(color);
     mesh.position.y = 0.5;
+    // A ghost that arrives over the socket while the title screen is up must
+    // not pop into the portrait — the layer keeps streaming while hidden.
+    mesh.visible = this.#visible;
     this.#scene.add(mesh);
 
     const label = document.createElement("div");
@@ -223,6 +247,10 @@ export class GhostLayer {
     labelRange: number,
   ): void {
     this.#clock += dt;
+    // Hidden (title screen and friends): nothing to bob and no label to
+    // place. setVisible already hid them; this just avoids the per-frame work
+    // and stops a label being un-hidden behind the portrait.
+    if (!this.#visible) return;
     const projected = new THREE.Vector3();
     for (const entry of this.#entries.values()) {
       entry.mesh.position.y = 0.5 + Math.sin(this.#clock * BOB_SPEED + entry.phase) * BOB_HEIGHT;

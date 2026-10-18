@@ -56,6 +56,17 @@ export function isDrifting(car: CarState): boolean {
   return car.driftT < OIL_SLIDE_SECONDS;
 }
 
+/** Cosmetic-only yaw for the forced drift: one full 360 across the drift's
+ * window, landing back at 0 exactly as it settles, spinning the way the
+ * drift is pushing the car. Linear rather than eased like the lateral
+ * offset — a spin-out reads as a loss of control, so it shouldn't ease in
+ * and out the way a deliberate slide does. */
+export function driftSpinAngle(car: CarState): number {
+  if (!isDrifting(car)) return 0;
+  const direction = Math.sign(car.driftTarget - car.driftFrom) || 1;
+  return -direction * (car.driftT / OIL_SLIDE_SECONDS) * Math.PI * 2;
+}
+
 /**
  * Shifts one lane in `dir` (-1 left, +1 right). A press while already sliding
  * retargets from wherever the car currently is, so taps stay responsive

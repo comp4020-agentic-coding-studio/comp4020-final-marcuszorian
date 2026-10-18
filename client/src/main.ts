@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createCar, isDrifting, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
+import { createCar, driftSpinAngle, isDrifting, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
 import type { CarState } from "./car.ts";
 import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
@@ -953,6 +953,10 @@ function frame(now: number): void {
   const x = car.offset;
   const z = -car.distance;
   playerCar.position.set(x, 0.5, z);
+  // Oil's forced drift spins the car a full 360 — see car.ts's driftSpinAngle
+  // doc comment for why this is linear, not eased, and sign-matched to the
+  // drift's direction.
+  playerCar.rotation.y = driftSpinAngle(car);
 
   if (attracting) {
     // Banking still applies: the demo's lane changes are real slides, and a

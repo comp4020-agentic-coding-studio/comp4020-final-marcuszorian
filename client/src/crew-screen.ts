@@ -133,6 +133,14 @@ export class CrewScreen {
       crew.maxJoins === null ? `${crew.joinCount} joins` : `${crew.joinCount}/${crew.maxJoins} joins`;
     meta.textContent = `${members} · ${uses}${crew.open ? "" : " · invite closed"}`;
 
+    const roster = document.createElement("ul");
+    roster.className = "crew-members";
+    for (const username of crew.members) {
+      const item = document.createElement("li");
+      item.textContent = username;
+      roster.append(item);
+    }
+
     const url = crew.inviteUrl ?? `${location.origin}/crew/${crew.inviteToken}`;
 
     const link = document.createElement("p");
@@ -153,7 +161,7 @@ export class CrewScreen {
       void clipboard.writeText(url).then(() => this.#say("invite link copied", "ok"), refused);
     });
 
-    frag.append(name, meta, link, copy);
+    frag.append(name, meta, roster, link, copy);
     return frag;
   }
 

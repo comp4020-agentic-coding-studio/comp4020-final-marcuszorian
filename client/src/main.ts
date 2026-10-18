@@ -934,17 +934,19 @@ function onSignedIn(found: Account): void {
   leaderboard.setViewer(found.username);
   setPlayerTrim(playerCar, skinColor(found.equippedSkin));
   titleScreen.setAccount(found.username, found.coins);
-  screens.go("title");
 
-  void crewScreen.setSignedIn(true).then(() => {
-    if (!pendingInvite) return;
-    const token = pendingInvite;
-    pendingInvite = null; // one attempt per load, success or refusal
-    // Land on the crew screen for it: a join that silently succeeded (or was
-    // refused as expired) behind the title screen would be an invite link
-    // that appears to do nothing.
-    screens.go("crew");
-    return crewScreen.join(token);
+  // Resolved before the screen is chosen: landing on the title first and
+  // jumping to the crew screen once the join returns would flash the title
+  // screen, and a slow join would leave the invite looking ignored.
+  const token = pendingInvite;
+  pendingInvite = null; // one attempt per load, success or refusal
+  void crewScreen.setSignedIn(true).then(async () => {
+    if (token) {
+      screens.go("crew");
+      await crewScreen.join(token);
+    } else {
+      screens.go("title");
+    }
   });
 }
 
@@ -992,7 +994,7 @@ usernameForm.addEventListener("submit", (e) => {
       // retry after a success that didn't visibly register), there's
       // nothing wrong to report — just proceed.
       if (account) {
-        screens.go("title");
+        onSignedIn(account);
         return;
       }
       usernameError.textContent = err.message;

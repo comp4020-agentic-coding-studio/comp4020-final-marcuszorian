@@ -27,6 +27,8 @@ export interface CrewView {
   expiresAt: string | null;
   /** Live headcount: how many users have this crew set right now. */
   memberCount: number;
+  /** Usernames of everyone in the crew right now, for the crew screen. */
+  members: string[];
   open: boolean;
 }
 
@@ -50,6 +52,14 @@ function memberCount(db: Database, crewId: number): number {
   ).n;
 }
 
+function memberNames(db: Database, crewId: number): string[] {
+  return (
+    db.prepare("SELECT username FROM users WHERE crew_id = ? ORDER BY username").all(crewId) as {
+      username: string;
+    }[]
+  ).map((r) => r.username);
+}
+
 export function viewOf(db: Database, crew: CrewRow): CrewView {
   return {
     id: crew.id,
@@ -59,6 +69,7 @@ export function viewOf(db: Database, crew: CrewRow): CrewView {
     maxJoins: crew.max_joins,
     expiresAt: crew.expires_at,
     memberCount: memberCount(db, crew.id),
+    members: memberNames(db, crew.id),
     open: isOpen(crew),
   };
 }

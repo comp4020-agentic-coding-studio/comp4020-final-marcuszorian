@@ -139,6 +139,7 @@ export interface Crew {
   maxJoins: number | null;
   expiresAt: string | null;
   memberCount: number;
+  members: string[];
   open: boolean;
   inviteUrl?: string;
 }

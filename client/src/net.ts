@@ -101,6 +101,33 @@ export async function equipSkin(id: string | null): Promise<{ equipped: string |
   return json(await fetch(`/api/skins/${encodeURIComponent(id ?? "default")}/equip`, { method: "POST" }));
 }
 
+// ---- tricks (doc/adr/0013) ----
+export interface Trick {
+  id: string;
+  name: string;
+  /** JSON-encoded `TrickInput[]` (trick.ts) — the server carries this
+   * through unchanged; the client parses it. */
+  sequence: string;
+  // snake_case: this mirrors the `tricks` table's column name as-is, unlike
+  // Skin's fields, which have no such column to drift from.
+  bonus_metres: number;
+  cost: number;
+  owned: boolean;
+}
+
+export interface TricksResponse {
+  coins: number;
+  tricks: Trick[];
+}
+
+export async function getTricks(): Promise<TricksResponse> {
+  return json(await fetch("/api/tricks"));
+}
+
+export async function unlockTrick(id: string): Promise<TricksResponse> {
+  return json(await fetch(`/api/tricks/${encodeURIComponent(id)}/unlock`, { method: "POST" }));
+}
+
 // ---- crews ----
 export interface Crew {
   id: number;

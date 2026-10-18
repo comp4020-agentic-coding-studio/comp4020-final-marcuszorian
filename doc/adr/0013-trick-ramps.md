@@ -1,6 +1,8 @@
 # 0013. Trick ramps add a non-fatal obstacle kind, a client-only QTE, and a bought trick catalogue
 
-Status: accepted
+Status: superseded by 0014 (ramp/barrier pairing, the trick window, and the
+car's invulnerability exemption — the rest of this record's decisions still
+stand)
 
 ## Context
 

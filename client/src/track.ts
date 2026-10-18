@@ -262,6 +262,11 @@ export interface Obstacle {
    * car's own live distance instead of trusting the `x` this obstacle was
    * built with, which is only ever correct at `motion.anchor`. */
   motion?: MotionParams;
+  /** Present only for `kind: "ramp"` — distance of the single-lane barrier
+   * row this ramp is paired with (doc/adr/0014). `main.ts` reads this to
+   * exempt that barrier from collision for the trick's duration and to snap
+   * the car past it once the trick settles. */
+  barrierDistance?: number;
 }
 
 export interface Chunk {
@@ -440,28 +445,30 @@ const EMPTY_MOVING_ROW: MovingRow = [];
 // since a continuous sweep takes longer to read than an instantaneous row.
 const MOVING_START_DISTANCE = START_DISTANCE + 140;
 const MOVING_SPACING_FACTOR = 1.6;
-// A moving barrier's sweep always centres on lane 0 (SWEEP_AMPLITUDE already
-// spans the full road width, so nothing centres on an outer lane) — so "in
-// line with another obstacle" only ever means "lane 0, too close in
-// distance." One CHUNK_LENGTH of clearance either side is enough room to read
-// the two as separate hazards rather than one obstacle glitching into
-// another.
+// A moving barrier's sweep crosses every lane over its cycle (SWEEP_AMPLITUDE
+// already spans a full lane either side of its lane-0 centre), so it must
+// never land near a static-barrier row at all — not "the same lane," any
+// lane — or the two can box the player into whatever single lane the static
+// row left open, only for the sweep to close that lane too moments later (a
+// real case hit in play: a `clamp-outer` row leaves only lane 0 open, and a
+// lane-0 sweep anchored nearby sweeps that last lane shut). One
+// CHUNK_LENGTH of clearance either side is enough room to read the two as
+// separate hazards rather than one obstacle glitching into another.
 const MOVING_LANE_CLEARANCE = CHUNK_LENGTH;
 
-/** Whether any static-barrier row blocking lane 0 falls within
+/** Whether any static-barrier row, blocking any lane, falls within
  * `MOVING_LANE_CLEARANCE` of `distance` — checked before a moving-barrier row
  * is placed there, same direction of dependency `oilThrough` already has on
- * static barriers (moving defers to static, never the reverse). */
-function staticBarrierNearLane0(seed: string, distance: number): boolean {
-  return staticBarrierNearLane(seed, distance, 0);
-}
-
-/** `staticBarrierNearLane0`, generalised to any lane — see `oilNearLane`. */
-function staticBarrierNearLane(seed: string, distance: number, lane: Lane): boolean {
+ * static barriers (moving defers to static, never the reverse). Deliberately
+ * blind to which lane(s) the row blocks: a moving sweep must never land near
+ * ANY static row, since the sweep crosses every lane over its cycle and a
+ * static row can leave only one lane open for the sweep to later close (see
+ * `MOVING_LANE_CLEARANCE`'s comment). */
+function staticBarrierNear(seed: string, distance: number): boolean {
   const rows = rowsThrough(seed, distance + MOVING_LANE_CLEARANCE);
   const start = lowerBound(rows, distance - MOVING_LANE_CLEARANCE);
   for (let i = start; i < rows.length && rows[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
-    if (rows[i]!.blocked.includes(lane)) return true;
+    if (rows[i]!.blocked.length > 0) return true;
   }
   return false;
 }
@@ -512,12 +519,13 @@ function movingRowsThrough(seed: string, distance: number): MovingObstacleRow[] 
         ? MOVING_START_DISTANCE
         : rows[i - 1]!.distance + gateSpacingAt(rows[i - 1]!.distance) * MOVING_SPACING_FACTOR;
     const row = playlist[i % playlist.length]!;
-    // Only a non-empty row centred on lane 0 can land "in line" with another
-    // obstacle — a rest row has nothing to collide with, and nothing here
-    // ever centres on an outer lane. Pushed forward, never backward, so rows
-    // stay sorted ascending the way `lowerBound` requires.
-    if (row.some((spec) => spec.center === 0)) {
-      while (staticBarrierNearLane0(seed, at) || oilNearLane0(seed, at)) {
+    // A rest row has nothing to collide with — nothing to check. A non-empty
+    // row must clear ANY static-barrier row nearby, regardless of which
+    // lane(s) that row blocks — see `staticBarrierNear`'s comment for why a
+    // lane-by-lane check isn't enough. Pushed forward, never backward, so
+    // rows stay sorted ascending the way `lowerBound` requires.
+    if (row.length > 0) {
+      while (staticBarrierNear(seed, at) || oilNearLane0(seed, at)) {
         at += MOVING_LANE_CLEARANCE;
       }
     }
@@ -699,44 +707,60 @@ function oilThrough(seed: string, distance: number): OilSpill[] {
 // ---- trick ramps ----
 // Asset 03 in the concept art: a non-fatal launch ramp that starts a
 // quick-time-event trick sequence on contact instead of a crash (doc/adr/
-// 0013) — oil's precedent that "contact is not automatically a crash." Placed
-// the same seeded way oil is (a distance and one lane), excluded from
-// `patternIsSolvable` the same way oil is, but with its own, larger minimum
-// lead: a ramp's QTE needs guaranteed clear road for the whole camera-zoom
-// and input window, not just a brief forced drift.
+// 0013) — oil's precedent that "contact is not automatically a crash." Each
+// ramp is paired with one specific single-lane static-barrier row — the one
+// it "jumps" — rather than merely guaranteeing clear road before whatever
+// fatal hazard happens to come next (doc/adr/0014, superseding that part of
+// 0013). The ramp's lane is the paired barrier's lane, not independently
+// seeded.
 export interface Ramp {
   readonly distance: number;
   readonly lane: Lane;
+  /** Distance of the single-lane barrier row this ramp jumps — `car.ts`
+   * exempts that exact row from collision for the trick's duration, and
+   * `main.ts` snaps the car to just past it once the trick settles, win or
+   * lose (doc/adr/0014). */
+  readonly barrierDistance: number;
 }
 
 const RAMP_START_DISTANCE = START_DISTANCE + 120;
 const RAMP_INTERVAL_METRES = 220;
-// Larger than OIL_MIN_LEAD_TO_HAZARD: a trick's QTE window runs far longer
-// than oil's forced drift, so the clear road it needs is proportionally
-// bigger. Capped well below the largest gap the barrier/moving-barrier
-// playlists ever actually leave between two fatal rows (~74m, bounded by
-// PATTERNS/MOVING_PATTERNS' own row counts and REST_ROWS) — at or above that
-// ceiling, `rampSpotFor`'s search has no distance left that satisfies it and
-// loops forever hunting for a gap that can't exist. Exported so a
-// generator-level test can assert the invariant against this exact number,
-// rather than duplicating it as a guessed constant that could silently
-// drift out of sync.
+// How far before its paired barrier a ramp sits — enough road for the
+// camera-zoom/slow-mo QTE to read as its own moment before the jump, not a
+// safety invariant anymore: `car.ts` exempts the paired barrier outright for
+// the trick's duration, and the car is snapped past it when the trick
+// settles regardless of outcome (doc/adr/0014). Exported so a generator-level
+// test can assert ramp placement against this exact number.
 export const RAMP_MIN_LEAD_TO_HAZARD = 55;
 
 // Metres a ramp must sit clear of the fatal hazard immediately BEHIND it —
-// purely a visual floor (that hazard is already resolved by the time a ramp
-// matters, unlike RAMP_MIN_LEAD_TO_HAZARD, which is load-bearing for "a
-// failed trick never crashes the run"). Without this a ramp can spawn right
-// out of the barrier the player just dodged, which reads as a glitch rather
-// than its own moment. The "jump over a hazard" feel instead comes from
-// hugging the hazard AHEAD (see `rampSpotFor`) — this constant only guards
-// the other direction, and is allowed to lose to `RAMP_PLACEMENT_HAZARD_SCAN_LIMIT`'s
+// purely a visual floor. Without this a ramp can spawn right out of the
+// barrier the player just dodged, which reads as a glitch rather than its own
+// moment. The "jump over a hazard" feel instead comes from hugging the paired
+// barrier AHEAD (see `rampSpotFor`) — this constant only guards the other
+// direction, and is allowed to lose to `RAMP_PLACEMENT_HAZARD_SCAN_LIMIT`'s
 // fallback in a dense stretch of road, since it's cosmetic rather than a
 // safety invariant.
 const RAMP_MIN_TRAILING_CLEARANCE = 15;
 
-function pickRampLane(rng: () => number): Lane {
-  return LANES[Math.floor(rng() * LANES.length)]!;
+/**
+ * First distance at or after `distance` where a single-lane static-barrier
+ * row sits, skipping past any other fatal hazard (a 2-lane barrier row, or a
+ * moving-barrier row) found first — a ramp can only pair with a row it can
+ * actually jump over and still leave the other two lanes crossable the usual
+ * way, so a 2-lane row or a moving sweep is not a valid pairing target
+ * (doc/adr/0014).
+ */
+function firstSingleLaneBarrierAtOrAfter(seed: string, distance: number): ObstacleRow {
+  let lo = distance;
+  for (;;) {
+    const hazard = firstFatalDistanceAtOrAfter(seed, lo);
+    const rows = rowsThrough(seed, hazard);
+    const i = lowerBound(rows, hazard);
+    const row = rows[i];
+    if (row && row.distance === hazard && row.blocked.length === 1) return row;
+    lo = hazard + 1;
+  }
 }
 
 const rampCache = new Map<string, Ramp[]>();
@@ -757,43 +781,59 @@ function rampNearLane(seed: string, distance: number, lane: Lane): boolean {
   return false;
 }
 
-// A bound on how many fatal hazards `rampSpotFor` will reject looking for a
-// spot that satisfies both the leading and trailing clearance at once,
-// before giving up on the trailing half and taking the first hazard-safe
-// spot instead. RAMP_MIN_LEAD_TO_HAZARD is the invariant that actually keeps
-// a trick survivable (doc/adr/0013) — RAMP_MIN_TRAILING_CLEARANCE is purely
-// a visual nicety, so it is the one allowed to lose this trade rather than
-// the search running away hunting for a combination of gaps that a dense
-// stretch of road may never offer.
+// A bound on how many single-lane barrier rows `rampSpotFor` will reject
+// looking for a pairing that satisfies both the leading and trailing
+// clearance at once, before giving up on the trailing half and taking the
+// first hazard-safe pairing instead. RAMP_MIN_TRAILING_CLEARANCE is purely a
+// visual nicety, so it is the one allowed to lose this trade rather than the
+// search running away hunting for a combination of gaps that a dense stretch
+// of road may never offer.
 const RAMP_PLACEMENT_HAZARD_SCAN_LIMIT = 64;
 
+interface RampSpot {
+  readonly distance: number;
+  readonly lane: Lane;
+  readonly barrierDistance: number;
+}
+
 /**
- * Where the next ramp lands: hugging close to the first fatal hazard at or
- * after `floorDistance` — exactly `RAMP_MIN_LEAD_TO_HAZARD` before it,
- * clamped to never land earlier than `floorDistance` — rather than sitting
- * however far before it the road happens to be clear. Landing right at that
- * margin, instead of arbitrarily early, is what makes the ramp read as a
- * jump over the hazard ahead instead of a precaution taken well clear of it.
+ * Where the next ramp lands and which single-lane barrow it pairs with:
+ * hugging close to the next single-lane barrier row at or after
+ * `floorDistance` — exactly `RAMP_MIN_LEAD_TO_HAZARD` before it — rather than
+ * sitting however far before it the road happens to be clear. Landing right
+ * at that margin, instead of arbitrarily early, is what makes the ramp read
+ * as a jump over the barrier ahead instead of a precaution taken well clear
+ * of it (doc/adr/0014).
  *
- * Each loop iteration either returns or steps `lo` past the hazard it just
- * rejected, so this always terminates: there are finitely many hazards
+ * A candidate barrier is rejected (and the search moves to the next
+ * single-lane barrier row) whenever hugging it would land before
+ * `floorDistance`, or when some other fatal hazard sits between the landing
+ * spot and the barrier itself — `firstSingleLaneBarrierAtOrAfter` can return
+ * a row with other (multi-lane or moving) hazards skipped on the way to it,
+ * and a ramp must have a clean, hazard-free run at the one barrier it's
+ * paired with.
+ *
+ * Each loop iteration either returns or steps `lo` past the barrier row it
+ * just rejected, so this always terminates: there are finitely many hazards
  * between any two distances, and once the generated road's speed curve
  * saturates (doc/adr/0002's `speedAt` cap), hazard spacing settles into the
- * same repeating pattern forever, so a combination that works recurs rather
- * than becoming rarer the further out this searches.
+ * same repeating pattern forever, so a pairing that works recurs rather than
+ * becoming rarer the further out this searches.
  */
-function rampSpotFor(seed: string, floorDistance: number, lane: Lane): number {
+function rampSpotFor(seed: string, floorDistance: number): RampSpot {
   let lo = floorDistance;
   for (let scanned = 0; ; scanned++) {
-    const hazard = firstFatalDistanceAtOrAfter(seed, lo);
-    const huggingHazard = hazard - RAMP_MIN_LEAD_TO_HAZARD;
-    if (huggingHazard >= lo) {
-      const at = Math.max(lo, huggingHazard);
+    const barrierRow = firstSingleLaneBarrierAtOrAfter(seed, lo);
+    const lane = barrierRow.blocked[0]!;
+    const at = barrierRow.distance - RAMP_MIN_LEAD_TO_HAZARD;
+    if (at >= lo && firstFatalDistanceAtOrAfter(seed, at) === barrierRow.distance) {
       const hazardsClear = !(lane === 0 && movingBarrierNearLane(seed, at, lane)) && !oilNearLane(seed, at, lane);
       const trailingClear = at - lastFatalDistanceAtOrBefore(seed, at) >= RAMP_MIN_TRAILING_CLEARANCE;
-      if (hazardsClear && (trailingClear || scanned >= RAMP_PLACEMENT_HAZARD_SCAN_LIMIT)) return at;
+      if (hazardsClear && (trailingClear || scanned >= RAMP_PLACEMENT_HAZARD_SCAN_LIMIT)) {
+        return { distance: at, lane, barrierDistance: barrierRow.distance };
+      }
     }
-    lo = hazard + RAMP_MIN_LEAD_TO_HAZARD;
+    lo = barrierRow.distance + 1;
   }
 }
 
@@ -810,9 +850,8 @@ function rampThrough(seed: string, distance: number): Ramp[] {
     // `rampSpotFor`'s hazard-hugging happens to be satisfiable again almost
     // immediately.
     const floorDistance = i === 0 ? RAMP_START_DISTANCE : ramps[i - 1]!.distance + RAMP_INTERVAL_METRES;
-    const lane = pickRampLane(mulberry32(hashString(`${seed}:ramp-lane:${i}`)));
-    const at = rampSpotFor(seed, floorDistance, lane);
-    ramps.push({ distance: at, lane });
+    const spot = rampSpotFor(seed, floorDistance);
+    ramps.push(spot);
   }
   return ramps;
 }
@@ -877,7 +916,13 @@ export function chunkFor(seed: string, index: number): Chunk {
   const ramps = rampThrough(seed, end);
   for (let i = lowerBound(ramps, start); i < ramps.length && ramps[i]!.distance < end; i++) {
     const ramp = ramps[i]!;
-    obstacles.push({ kind: "ramp", lane: ramp.lane, x: laneX(ramp.lane), z: -ramp.distance });
+    obstacles.push({
+      kind: "ramp",
+      lane: ramp.lane,
+      x: laneX(ramp.lane),
+      z: -ramp.distance,
+      barrierDistance: ramp.barrierDistance,
+    });
   }
 
   return { index, obstacles };

@@ -45,6 +45,15 @@ export interface CarState {
    * `CarState` in `main.ts`/`trick.ts` — this module has no "is a trick
    * still running" flag to check instead. */
   lastRampZ: number | null;
+  /** `z` of the single-lane barrier row the active trick is jumping, or
+   * `null` when no trick is running (doc/adr/0014). Set by `main.ts` when a
+   * trick starts and cleared when it settles — this module has no "is a
+   * trick running" flag of its own, so it trusts the caller's bookkeeping the
+   * same way it trusts `lastRampZ`'s. While set, that one barrier row is
+   * exempt from the generic fatal-collision check: a ramp's jump guarantees
+   * landing clear of the hazard it's jumping, regardless of how the trick
+   * plays out. */
+  exemptBarrierZ: number | null;
 }
 
 export function createCar(): CarState {
@@ -59,6 +68,7 @@ export function createCar(): CarState {
     driftTarget: 0,
     driftT: OIL_SLIDE_SECONDS,
     lastRampZ: null,
+    exemptBarrierZ: null,
   };
 }
 
@@ -138,10 +148,14 @@ export interface StepResult {
    * (doc/adr/0013: trick selection is per-attempt client state, not part of
    * this module's pure obstacle/physics contract). */
   rampHit: boolean;
+  /** The ramp's own lane and paired-barrier distance, set alongside
+   * `rampHit` — `main.ts` needs both to exempt that barrier from collision
+   * and to snap the car past it once the trick settles (doc/adr/0014). */
+  ramp: { lane: Lane; barrierDistance: number } | null;
 }
 
 export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]): StepResult {
-  if (car.crashed) return { crashed: false, rampHit: false };
+  if (car.crashed) return { crashed: false, rampHit: false, ramp: null };
 
   car.distance += speedAt(car.distance) * dt;
 
@@ -168,6 +182,7 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
   // Tested against the interpolated offset, not the target lane: clipping a
   // barrier part-way through a slide is a crash (ADR 0004).
   let rampHit = false;
+  let ramp: { lane: Lane; barrierDistance: number } | null = null;
   const carZ = -car.distance;
   for (const obstacle of nearbyObstacles) {
     if (Math.abs(obstacle.z - carZ) > COLLISION_WINDOW) continue;
@@ -190,13 +205,22 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
       if (car.lastRampZ !== obstacle.z) {
         car.lastRampZ = obstacle.z;
         rampHit = true;
+        ramp = { lane: obstacle.lane, barrierDistance: obstacle.barrierDistance! };
       }
       continue;
     }
 
+    if (obstacle.kind === "barrier" && obstacle.z === car.exemptBarrierZ) {
+      // The one barrier the active trick is jumping (doc/adr/0014) — exempt
+      // for the trick's duration regardless of outcome; `main.ts` snaps the
+      // car past it once the trick settles rather than letting the normal
+      // collision check decide.
+      continue;
+    }
+
     car.crashed = true;
-    return { crashed: true, rampHit };
+    return { crashed: true, rampHit, ramp };
   }
 
-  return { crashed: false, rampHit };
+  return { crashed: false, rampHit, ramp };
 }

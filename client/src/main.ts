@@ -18,7 +18,7 @@ import { createSky, updateSky } from "./sky.ts";
 import { SpeedLines } from "./speed-lines.ts";
 import { createSun, updateSun } from "./sun.ts";
 import { CHUNK_LENGTH, LANE_WIDTH, movingBarrierX, ROAD_HALF_WIDTH, chunkFor } from "./track.ts";
-import type { MotionParams } from "./track.ts";
+import type { Lane, MotionParams } from "./track.ts";
 import { createPlayerCar, setPlayerGhostly, setPlayerTrim } from "./car-model.ts";
 import { Cosmetics } from "./cosmetics.ts";
 import { CrewScreen } from "./crew-screen.ts";
@@ -45,7 +45,16 @@ import { TitleScreen } from "./title-screen.ts";
 import { createBarrier, createMovingBarrier } from "./barrier-model.ts";
 import { createOilSpill, type OilDrift } from "./oil-model.ts";
 import { createRamp, type RampFlames } from "./ramp-model.ts";
-import { advanceTrick, createIdleTrick, DEFAULT_TRICK, startTrick, submitInput, type TrickSequence, type TrickState } from "./trick.ts";
+import {
+  advanceTrick,
+  createIdleTrick,
+  DEFAULT_TRICK,
+  startTrick,
+  submitInput,
+  TRICK_WINDOW_SECONDS,
+  type TrickSequence,
+  type TrickState,
+} from "./trick.ts";
 import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
 
@@ -62,6 +71,8 @@ const scoreEl = document.getElementById("score")!;
 const crashedEl = document.getElementById("crashed")!;
 const oilPopupEl = document.getElementById("oilPopup")!;
 const trickPromptEl = document.getElementById("trickPrompt")!;
+const trickStepsEl = document.getElementById("trickSteps")!;
+const trickTimerFillEl = document.getElementById("trickTimerFill") as HTMLDivElement;
 const crashedTextEl = document.getElementById("crashedText")!;
 const restartButton = document.getElementById("restart") as HTMLButtonElement;
 const crashedHomeButton = document.getElementById("crashedHome") as HTMLButtonElement;
@@ -238,6 +249,22 @@ let attractRespawn = 0;
  * since `car.ts` has no notion of a trick catalogue; `main.ts` is the only
  * place that owns both a ramp-hit signal and the player's owned tricks. */
 let trick: TrickState = createIdleTrick();
+/** The ramp's lane and paired barrier distance for the currently active (or
+ * just-settled) trick, or `null` when none — doc/adr/0014. `car.ts` has no
+ * notion of a trick catalogue or a ramp/barrier pairing, so `main.ts` tracks
+ * this itself, the same way it already owns `trick`. */
+let activeRamp: { lane: Lane; barrierDistance: number } | null = null;
+/** How much slower the world runs while a trick's QTE is live (doc/adr/0014)
+ * — gives the player a readable window to react in, without shrinking the
+ * fixed TRICK_WINDOW_SECONDS budget itself (`advanceTrick` is always fed the
+ * real, unscaled `dt`). */
+const TRICK_SLOWMO_FACTOR = 0.3;
+/** Metres past the paired barrier's own distance the car must actually reach
+ * before its exemption (`car.exemptBarrierZ`) is lifted (doc/adr/0014) —
+ * enough that the car reads as having cleanly cleared the obstacle it
+ * jumped, not merely drawn level with it, however slowly (slow-mo) or
+ * normally it's travelling when it gets there. */
+const LANDING_CLEARANCE = 2;
 /** True once the active trick's bonus (if any) has been applied to
  * `car.distance`. A trick settles to "done"/"error" either inside
  * `advanceTrick` (a timeout, called from `frame()`) or inside `submitInput`
@@ -642,21 +669,32 @@ const TRICK_GLYPH: Record<string, string> = { up: "↑", down: "↓", left: "←
 
 /** Reflects `trick` onto `#trickPrompt` — same `panel` + `hidden` toggle
  * convention as `#oilPopup` (doc/adr/0012/0013). Shown while a QTE is
- * active, and held one extra beat on a settled "error" so the red-cross
- * actually registers before the prompt clears (see `trickHold`). */
+ * active, and held one extra beat on a settled outcome so the last
+ * green/red step actually registers before the prompt clears (see
+ * `trickHold`). Every step of the sequence is rendered at once (doc/adr/
+ * 0014), rebuilt each call rather than diffed — a trick is at most
+ * MAX_TRICK_STEPS steps and this only runs while one is on screen, so the
+ * DOM churn is negligible. */
 function updateTrickPrompt(state: TrickState): void {
-  const visible = state.active || state.outcome === "error";
+  // `state.sequenceId !== ""` rules out `createIdleTrick()`'s baseline state,
+  // whose `outcome` is "done" as a harmless default rather than an actual
+  // settled trick — without this check the panel would show from the moment
+  // a run starts, long before any ramp is ever hit.
+  const visible = state.sequenceId !== "" && (state.active || state.outcome === "error" || state.outcome === "done");
   trickPromptEl.hidden = !visible;
   if (!visible) return;
   trickPromptEl.classList.toggle("trick-error", state.outcome === "error");
-  trickPromptEl.classList.toggle("trick-ok", state.outcome === "ok");
-  if (state.outcome === "error") {
-    trickPromptEl.textContent = "✗";
-    return;
-  }
-  const current = state.sequence.steps[state.stepIndex];
-  const next = state.sequence.steps[state.stepIndex + 1];
-  trickPromptEl.textContent = [current, next].filter(Boolean).map((k) => TRICK_GLYPH[k!]).join(" ");
+
+  trickStepsEl.textContent = "";
+  state.sequence.steps.forEach((step, i) => {
+    const span = document.createElement("span");
+    span.className = `trick-step ${state.results[i]}`;
+    span.textContent = TRICK_GLYPH[step];
+    trickStepsEl.appendChild(span);
+  });
+
+  const remaining = state.active ? Math.max(0, 1 - state.windowElapsed / TRICK_WINDOW_SECONDS) : state.outcome === "done" ? 1 : 0;
+  trickTimerFillEl.style.transform = `scaleX(${remaining})`;
 }
 
 // `e.repeat` is the whole point of this guard — without it, holding Left walks
@@ -1005,13 +1043,21 @@ function frame(now: number): void {
   }
 
   if (driving()) {
-    const result = stepAndStream(dt);
+    // The world runs in slow motion while a trick's QTE is live or still
+    // being held on screen (doc/adr/0014) — scaled dt drives the car/stream
+    // step and the camera target below, but `advanceTrick` always gets the
+    // real `dt` so the reaction window stays a fixed wall-clock budget rather
+    // than stretching along with the slow-mo.
+    const simDt = trick.active || trickHold > 0 ? dt * TRICK_SLOWMO_FACTOR : dt;
+    const result = stepAndStream(simDt);
     const justCrashed = result.crashed;
 
-    if (result.rampHit && !trick.active) {
+    if (result.rampHit && !trick.active && result.ramp) {
       const sequence = ownedTricks[Math.floor(Math.random() * ownedTricks.length)]!;
       trick = startTrick(sequence);
       trickSettled = false;
+      activeRamp = result.ramp;
+      car.exemptBarrierZ = -result.ramp.barrierDistance;
     }
     if (trick.active) trick = advanceTrick(trick, dt);
     // Not `trick.active` alone: `submitInput` (keydown handler, below) can
@@ -1019,12 +1065,32 @@ function frame(now: number): void {
     // `trickSettled` is what actually tracks "has the bonus been applied
     // yet," independent of which path produced the settled outcome.
     if (!trick.active && !trickSettled) {
+      // The car settles into the paired barrier's lane unconditionally — a
+      // failed or timed-out trick still lands in the lane it jumped
+      // (doc/adr/0014) — but keeps travelling at its own pace rather than
+      // being teleported forward: `car.exemptBarrierZ` stays set below until
+      // the car naturally reaches the barrier, so there's nothing to crash
+      // into in the meantime.
+      if (activeRamp && car.lane !== activeRamp.lane) {
+        car.lane = activeRamp.lane;
+        car.slideFrom = car.offset;
+        car.slideT = 0;
+      }
       if (trick.outcome === "done") car.distance += trick.sequence.bonusMetres;
       trickSettled = true;
       trickHold = TRICK_HOLD_SECONDS;
     } else if (!trick.active && trickHold > 0) {
       trickHold = Math.max(0, trickHold - dt);
       if (trickHold === 0) trick = createIdleTrick();
+    }
+    // Keeps the jumped barrier exempt from collision until the car has
+    // actually travelled far enough to clear it, however long that takes at
+    // whatever pace it's moving (doc/adr/0014) — not tied to the trick's own
+    // settling frame, since slow-mo means the car is often still well short
+    // of the barrier when the QTE itself finishes.
+    if (activeRamp && car.distance >= activeRamp.barrierDistance + LANDING_CLEARANCE) {
+      car.exemptBarrierZ = null;
+      activeRamp = null;
     }
 
     scoreEl.textContent = `${Math.floor(car.distance)} m`;
@@ -1042,6 +1108,8 @@ function frame(now: number): void {
       trick = createIdleTrick();
       trickSettled = true;
       trickHold = 0;
+      car.exemptBarrierZ = null;
+      activeRamp = null;
       updateTrickPrompt(trick);
       setPlayerGhostly(playerCar, true);
       // The rushing-past streaks read as the car's own speed; a dead car

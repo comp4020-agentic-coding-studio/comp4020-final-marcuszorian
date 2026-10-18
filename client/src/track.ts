@@ -440,6 +440,44 @@ const EMPTY_MOVING_ROW: MovingRow = [];
 // since a continuous sweep takes longer to read than an instantaneous row.
 const MOVING_START_DISTANCE = START_DISTANCE + 140;
 const MOVING_SPACING_FACTOR = 1.6;
+// A moving barrier's sweep always centres on lane 0 (SWEEP_AMPLITUDE already
+// spans the full road width, so nothing centres on an outer lane) — so "in
+// line with another obstacle" only ever means "lane 0, too close in
+// distance." One CHUNK_LENGTH of clearance either side is enough room to read
+// the two as separate hazards rather than one obstacle glitching into
+// another.
+const MOVING_LANE_CLEARANCE = CHUNK_LENGTH;
+
+/** Whether any static-barrier row blocking lane 0 falls within
+ * `MOVING_LANE_CLEARANCE` of `distance` — checked before a moving-barrier row
+ * is placed there, same direction of dependency `oilThrough` already has on
+ * static barriers (moving defers to static, never the reverse). */
+function staticBarrierNearLane0(seed: string, distance: number): boolean {
+  const rows = rowsThrough(seed, distance + MOVING_LANE_CLEARANCE);
+  const start = lowerBound(rows, distance - MOVING_LANE_CLEARANCE);
+  for (let i = start; i < rows.length && rows[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
+    if (rows[i]!.blocked.includes(0)) return true;
+  }
+  return false;
+}
+
+/** Whether any *already-placed* oil spill covering lane 0 falls within
+ * `MOVING_LANE_CLEARANCE` of `distance`. Reads `oilCache` directly rather
+ * than calling `oilThrough` — oil's own placement already calls
+ * `movingRowsThrough` (via `firstFatalDistanceAtOrAfter`), so having this
+ * call `oilThrough` back would make the two kinds try to extend each other's
+ * timeline indefinitely. A passive read breaks that cycle: moving barriers
+ * only ever avoid oil that already exists, never oil that would need
+ * generating to check. */
+function oilNearLane0(seed: string, distance: number): boolean {
+  const spills = oilCache.get(seed);
+  if (!spills) return false;
+  const start = lowerBound(spills, distance - MOVING_LANE_CLEARANCE);
+  for (let i = start; i < spills.length && spills[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
+    if (spills[i]!.lanes.includes(0)) return true;
+  }
+  return false;
+}
 
 interface MovingObstacleRow {
   distance: number;
@@ -457,11 +495,21 @@ function movingRowsThrough(seed: string, distance: number): MovingObstacleRow[] 
   const playlist = movingPlaylistFor(seed);
   while (rows.length === 0 || rows[rows.length - 1]!.distance <= distance) {
     const i = rows.length;
-    const at =
+    let at =
       i === 0
         ? MOVING_START_DISTANCE
         : rows[i - 1]!.distance + gateSpacingAt(rows[i - 1]!.distance) * MOVING_SPACING_FACTOR;
-    rows.push({ distance: at, row: playlist[i % playlist.length]! });
+    const row = playlist[i % playlist.length]!;
+    // Only a non-empty row centred on lane 0 can land "in line" with another
+    // obstacle — a rest row has nothing to collide with, and nothing here
+    // ever centres on an outer lane. Pushed forward, never backward, so rows
+    // stay sorted ascending the way `lowerBound` requires.
+    if (row.some((spec) => spec.center === 0)) {
+      while (staticBarrierNearLane0(seed, at) || oilNearLane0(seed, at)) {
+        at += MOVING_LANE_CLEARANCE;
+      }
+    }
+    rows.push({ distance: at, row });
   }
   return rows;
 }
@@ -519,6 +567,53 @@ function firstFatalDistanceAtOrAfter(seed: string, distance: number): number {
   return Math.min(barrierRows[bi]!.distance, movingRows[mi]!.distance);
 }
 
+/**
+ * Oil's target distance: pulled back from `candidate` toward `earliest` to
+ * sit `OIL_MIN_LEAD_TO_HAZARD` before the next fatal hazard, whenever that
+ * hazard is closer than the interval would otherwise place it.
+ * `firstFatalDistanceAtOrAfter(seed, candidate)` alone isn't enough to find
+ * that hazard — it only searches from `candidate` onward, so a hazard sitting
+ * between `earliest` and `candidate` (which the pullback can land right next
+ * to) was never checked.
+ *
+ * `lo` is both the search floor and the clamp floor, and both advance
+ * together: if the hazard found from `lo` is itself too close to `lo` to
+ * leave room *before* it, oil can't land there, so `lo` steps all the way to
+ * `OIL_MIN_LEAD_TO_HAZARD` past that hazard (not just past it) before the
+ * search repeats — anything less leaves oil with no trailing clearance either,
+ * i.e. landing right after the very hazard it just stepped around.
+ */
+function oilDistanceFor(seed: string, earliest: number, candidate: number): number {
+  let lo = earliest;
+  for (;;) {
+    const hazard = firstFatalDistanceAtOrAfter(seed, lo);
+    if (hazard - lo >= OIL_MIN_LEAD_TO_HAZARD) {
+      return Math.max(lo, Math.min(candidate, hazard - OIL_MIN_LEAD_TO_HAZARD));
+    }
+    lo = hazard + OIL_MIN_LEAD_TO_HAZARD;
+  }
+}
+
+/** Whether an *already-placed* moving-barrier row centred on lane 0 falls
+ * within `MOVING_LANE_CLEARANCE` of `distance`. Reads `movingRowCache`
+ * directly rather than calling `movingRowsThrough` — by the time oil is
+ * placed this far, `oilDistanceFor`'s own hazard search has already forced
+ * `movingRowsThrough` to generate everything up to roughly this distance (it
+ * calls that inside `firstFatalDistanceAtOrAfter`), so a passive read here
+ * sees real data rather than an empty cache. `OIL_MIN_LEAD_TO_HAZARD` already
+ * keeps oil clear of whatever hazard comes *after* it; this is the missing
+ * other direction — oil landing just *behind* a moving barrier it shares a
+ * lane with, which that forward-only check never catches. */
+function movingBarrierNearLane0(seed: string, distance: number): boolean {
+  const rows = movingRowCache.get(seed);
+  if (!rows) return false;
+  const start = lowerBound(rows, distance - MOVING_LANE_CLEARANCE);
+  for (let i = start; i < rows.length && rows[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
+    if (rows[i]!.row.some((spec) => spec.center === 0)) return true;
+  }
+  return false;
+}
+
 const oilCache = new Map<string, OilSpill[]>();
 
 function oilThrough(seed: string, distance: number): OilSpill[] {
@@ -529,11 +624,18 @@ function oilThrough(seed: string, distance: number): OilSpill[] {
   }
   while (spills.length === 0 || spills[spills.length - 1]!.distance <= distance) {
     const i = spills.length;
-    const earliest = i === 0 ? OIL_START_DISTANCE : spills[i - 1]!.distance + 1;
+    let earliest = i === 0 ? OIL_START_DISTANCE : spills[i - 1]!.distance + 1;
     const candidate = i === 0 ? OIL_START_DISTANCE : spills[i - 1]!.distance + OIL_INTERVAL_METRES;
-    const nextHazard = firstFatalDistanceAtOrAfter(seed, candidate);
-    const at = Math.max(earliest, Math.min(candidate, nextHazard - OIL_MIN_LEAD_TO_HAZARD));
     const lanes = pickOilLanes(mulberry32(hashString(`${seed}:oil-lane:${i}`)));
+    // Only matters when lane 0 is one of the lanes this spill actually
+    // covers — same "lane 0 is the only lane that can collide" reasoning
+    // `movingRowsThrough`'s own check above uses. Pushed forward, never
+    // backward, same shape as every other clearance loop in this file.
+    let at = oilDistanceFor(seed, earliest, candidate);
+    while (lanes.includes(0) && movingBarrierNearLane0(seed, at)) {
+      earliest = at + MOVING_LANE_CLEARANCE;
+      at = oilDistanceFor(seed, earliest, Math.max(candidate, earliest));
+    }
     spills.push({ distance: at, lanes });
   }
   return spills;

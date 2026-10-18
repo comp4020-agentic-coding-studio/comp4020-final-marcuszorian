@@ -34,6 +34,22 @@ function clipCurve(): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+// A crude stepped quantizer — trickFail()'s "flat, 8-bit, unforgiving" texture.
+function bitcrushCurve(): Float32Array<ArrayBuffer> {
+  const n = 1024;
+  const steps = 8;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.round(x * steps) / steps;
+  }
+  return curve;
+}
+const BITCRUSH_CURVE = bitcrushCurve();
+
+// Minor pentatonic steps, semitones from root — trickSuccess()'s rising scale.
+const PENTATONIC = [0, 3, 5, 7, 10];
+
 export class AudioEngine {
   #ctx: AudioContext | null = null;
   #master!: GainNode;
@@ -516,6 +532,327 @@ export class AudioEngine {
       o.start(t);
       o.stop(t + 0.12);
     });
+  }
+
+  /** Oil's forced drift (doc/adr/0012): a ring-modulated sine over a
+   * resonant noise sweep, auto-panned hard L/R to read as fishtailing, with
+   * a downward bandpass sweep for the "frictionless" slip. Routed to #aged
+   * like every other world sound — a drift is something happening to the
+   * car, not a UI event. */
+  oilSlip(): void {
+    const ctx = this.#ctx;
+    if (!ctx || this.#muted) return;
+    const t = ctx.currentTime;
+    const dur = 1.2;
+
+    const carrier = ctx.createOscillator();
+    carrier.type = "sine";
+    carrier.frequency.setValueAtTime(260, t);
+    carrier.frequency.linearRampToValueAtTime(180, t + dur);
+    const ring = ctx.createOscillator();
+    ring.type = "sine";
+    ring.frequency.setValueAtTime(40, t);
+    ring.frequency.linearRampToValueAtTime(90, t + dur);
+    const ringAmt = ctx.createGain();
+    ringAmt.gain.value = 1; // AM depth via a gain node modulated by `ring`
+    ring.connect(ringAmt.gain);
+    carrier.connect(ringAmt);
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.#noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 12;
+    bp.frequency.setValueAtTime(3200, t);
+    bp.frequency.exponentialRampToValueAtTime(220, t + dur);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.5;
+    noise.connect(bp).connect(noiseGain);
+
+    const sum = ctx.createGain();
+    sum.gain.setValueAtTime(0, t);
+    sum.gain.linearRampToValueAtTime(0.4, t + 0.01); // 10ms attack
+    sum.gain.exponentialRampToValueAtTime(EPS, t + dur);
+    ringAmt.connect(sum);
+    noiseGain.connect(sum);
+
+    // Unsynchronized stereo auto-pan: two incommensurate LFOs fighting over
+    // the StereoPannerNode so the sweep reads as erratic, not a clean tremolo.
+    const pan = ctx.createStereoPanner();
+    const panA = ctx.createOscillator();
+    panA.type = "sine";
+    panA.frequency.value = 5.3;
+    const panB = ctx.createOscillator();
+    panB.type = "sine";
+    panB.frequency.value = 3.7;
+    const panAmt = ctx.createGain();
+    panAmt.gain.value = 1;
+    panA.connect(panAmt);
+    panB.connect(panAmt);
+    panAmt.connect(pan.pan);
+    sum.connect(pan).connect(this.#aged);
+
+    const nodes: AudioNode[] = [carrier, ring, ringAmt, noise, bp, noiseGain, sum, pan, panA, panB, panAmt];
+    this.#reap(carrier, nodes);
+    for (const o of [carrier, ring, panA, panB]) {
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+    noise.start(t);
+    noise.stop(t + dur);
+  }
+
+  /** A ramp launch (doc/adr/0013): filtered noise plus an ascending sawtooth
+   * sweep through a feedback-heavy flanger for a jet-engine liftoff, and a
+   * momentary high-pass sweep on the engine bus so the road's sub-bass drops
+   * out the instant the tires leave the asphalt. */
+  rampLaunch(): void {
+    const ctx = this.#ctx;
+    if (!ctx || this.#muted) return;
+    const t = ctx.currentTime;
+    const dur = 0.7;
+
+    const saw = ctx.createOscillator();
+    saw.type = "sawtooth";
+    saw.frequency.setValueAtTime(140, t);
+    saw.frequency.exponentialRampToValueAtTime(900, t + dur);
+    const sawGain = ctx.createGain();
+    sawGain.gain.setValueAtTime(0, t);
+    sawGain.gain.linearRampToValueAtTime(0.22, t + 0.03);
+    sawGain.gain.exponentialRampToValueAtTime(EPS, t + dur);
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.#noise;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(600, t);
+    hp.frequency.exponentialRampToValueAtTime(4000, t + dur);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0, t);
+    noiseGain.gain.linearRampToValueAtTime(0.35, t + 0.02);
+    noiseGain.gain.exponentialRampToValueAtTime(EPS, t + dur + 0.2); // longer, airy decay
+
+    // Feedback flanger: a short modulated delay fed back into itself.
+    const flange = ctx.createDelay(0.02);
+    flange.delayTime.value = 0.004;
+    const flangeLfo = ctx.createOscillator();
+    flangeLfo.type = "sine";
+    flangeLfo.frequency.value = 0.6;
+    const flangeDepth = ctx.createGain();
+    flangeDepth.gain.value = 0.0035;
+    flangeLfo.connect(flangeDepth).connect(flange.delayTime);
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.7;
+    flange.connect(feedback).connect(flange);
+
+    const sum = ctx.createGain();
+    sum.gain.value = 1;
+    saw.connect(sawGain).connect(sum);
+    noise.connect(hp).connect(noiseGain).connect(flange).connect(sum);
+    sum.connect(this.#aged);
+
+    const nodes: AudioNode[] = [saw, sawGain, noise, hp, noiseGain, flange, flangeLfo, flangeDepth, feedback, sum];
+    this.#reap(saw, nodes);
+    saw.start(t);
+    saw.stop(t + dur + 0.05);
+    noise.start(t);
+    noise.stop(t + dur + 0.25);
+    flangeLfo.start(t);
+    flangeLfo.stop(t + dur + 0.25);
+
+    // Momentary sub-bass cut on the engine bus: sweep lp1/lp2's own cutoff up
+    // and back down rather than adding a new filter, so the "tires leave the
+    // asphalt" dip rides on the same bus update() already drives.
+    for (const f of [this.#lp1, this.#lp2]) {
+      const now = f.frequency.value;
+      f.frequency.cancelScheduledValues(t);
+      f.frequency.setValueAtTime(now, t);
+      f.frequency.linearRampToValueAtTime(Math.max(now, 1800), t + 0.05);
+      f.frequency.linearRampToValueAtTime(now, t + 0.4);
+    }
+  }
+
+  /** One correct trick input (doc/adr/0013/0014): an FM-ish bell (sine
+   * carrier + a fast-decaying sine modulator) stepping up the minor
+   * pentatonic scale with each call, through a tempo-synced ping-pong delay
+   * so a fast combo builds its own cascading arpeggio. `step` resets to 0 at
+   * the start of each trick (see main.ts). */
+  trickSuccess(step: number): void {
+    const ctx = this.#ctx;
+    if (!ctx || this.#muted) return;
+    const t = ctx.currentTime;
+    const semis = PENTATONIC[step % PENTATONIC.length]! + 12 * Math.floor(step / PENTATONIC.length);
+    const freq = 523.25 * Math.pow(2, semis / 12); // C5 root
+
+    const carrier = ctx.createOscillator();
+    carrier.type = "sine";
+    carrier.frequency.value = freq;
+    const mod = ctx.createOscillator();
+    mod.type = "sine";
+    mod.frequency.value = freq * 3.01; // inharmonic ratio for a bell-ish timbre
+    const modAmt = ctx.createGain();
+    modAmt.gain.setValueAtTime(freq * 2, t);
+    modAmt.gain.exponentialRampToValueAtTime(EPS, t + 0.15);
+    mod.connect(modAmt).connect(carrier.frequency);
+
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.3, t); // 0ms attack
+    amp.gain.exponentialRampToValueAtTime(EPS, t + 0.15);
+
+    // 1/16th-note ping-pong delay at the song's fixed 120bpm clock (STEP is
+    // already a 16th at that tempo), two cross-feeding delays panned L/R.
+    const delayL = ctx.createDelay(1);
+    delayL.delayTime.value = STEP;
+    const delayR = ctx.createDelay(1);
+    delayR.delayTime.value = STEP;
+    const fbL = ctx.createGain();
+    fbL.gain.value = 0.35;
+    const fbR = ctx.createGain();
+    fbR.gain.value = 0.35;
+    const panL = ctx.createStereoPanner();
+    panL.pan.value = -0.8;
+    const panR = ctx.createStereoPanner();
+    panR.pan.value = 0.8;
+    delayL.connect(panL).connect(this.#master);
+    delayR.connect(panR).connect(this.#master);
+    delayL.connect(fbR).connect(delayR);
+    delayR.connect(fbL).connect(delayL);
+
+    carrier.connect(amp);
+    amp.connect(this.#master);
+    amp.connect(delayL);
+
+    const nodes: AudioNode[] = [carrier, mod, modAmt, amp, delayL, delayR, fbL, fbR, panL, panR];
+    this.#reap(carrier, nodes);
+    carrier.start(t);
+    carrier.stop(t + 0.2);
+    mod.start(t);
+    mod.stop(t + 0.2);
+  }
+
+  /** A completed trick (doc/adr/0013): a detuned-saw synth-brass chord
+   * through chorus and a bright plate-ish reverb, plus a high sparkle
+   * glissando on top — the big payout sound, deliberately much wetter and
+   * longer than every other one-shot here. */
+  trickComplete(): void {
+    const ctx = this.#ctx;
+    if (!ctx || this.#muted) return;
+    const t = ctx.currentTime;
+    const dur = 1.8;
+    const chord = [0, 4, 7, 12]; // major triad + octave, root at ROOT_HZ*8
+
+    const sum = ctx.createGain();
+    sum.gain.value = 1;
+    const nodes: AudioNode[] = [sum];
+
+    // Two detuned saws per chord tone for a thick Juno-ish unison.
+    for (const semis of chord) {
+      const freq = ROOT_HZ * 8 * Math.pow(2, semis / 12);
+      for (const detune of [-9, 9]) {
+        const o = ctx.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.value = freq;
+        o.detune.value = detune;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.09, t + 0.04); // soft 40ms attack
+        g.gain.setValueAtTime(0.09, t + dur * 0.5);
+        g.gain.exponentialRampToValueAtTime(EPS, t + dur);
+        o.connect(g).connect(sum);
+        nodes.push(o, g);
+      }
+    }
+
+    // Stereo chorus: two short modulated delays, hard-panned.
+    const chorusBus = ctx.createGain();
+    chorusBus.gain.value = 0.8;
+    sum.connect(chorusBus);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.35;
+    nodes.push(chorusBus, lfo);
+    for (const [base, pan] of [[0.012, -1], [0.018, 1]] as const) {
+      const d = ctx.createDelay(0.05);
+      d.delayTime.value = base;
+      const depth = ctx.createGain();
+      depth.gain.value = 0.003;
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      lfo.connect(depth).connect(d.delayTime);
+      chorusBus.connect(d).connect(p).connect(this.#master);
+      nodes.push(d, depth, p);
+    }
+
+    // Bright plate-ish reverb send: reuse the gated-hall convolver path with
+    // a longer, fully-wet send since this is the one moment meant to feel massive.
+    const verbSend = ctx.createGain();
+    verbSend.gain.value = 0.6;
+    sum.connect(verbSend).connect(this.#gatedVerb).connect(this.#master);
+    nodes.push(verbSend);
+
+    // Sparkle glissando: a bright square sweeping up over the chord's attack.
+    const sparkle = ctx.createOscillator();
+    sparkle.type = "square";
+    sparkle.frequency.setValueAtTime(1800, t);
+    sparkle.frequency.exponentialRampToValueAtTime(5200, t + 0.3);
+    const sparkleHp = ctx.createBiquadFilter();
+    sparkleHp.type = "highpass";
+    sparkleHp.frequency.value = 3000;
+    const sparkleGain = ctx.createGain();
+    sparkleGain.gain.setValueAtTime(0.15, t);
+    sparkleGain.gain.exponentialRampToValueAtTime(EPS, t + 0.35);
+    sparkle.connect(sparkleHp).connect(sparkleGain).connect(this.#master);
+    nodes.push(sparkle, sparkleHp, sparkleGain);
+
+    const firstOsc = nodes.find((n): n is OscillatorNode => n instanceof OscillatorNode)!;
+    this.#reap(firstOsc, nodes);
+    for (const n of nodes) {
+      if (n instanceof OscillatorNode) {
+        n.start(t);
+        n.stop(t + dur + 0.3);
+      }
+    }
+  }
+
+  /** A failed/timed-out trick (doc/adr/0013/0014): two saws a tritone apart
+   * through a hard bitcrusher, flat block envelope, a fast downward pitch
+   * tail, and deliberately 100% dry — no reverb, no delay — so it snaps the
+   * player out of the trick's flow rather than lingering. */
+  trickFail(): void {
+    const ctx = this.#ctx;
+    if (!ctx || this.#muted) return;
+    const t = ctx.currentTime;
+    const dur = 0.5;
+    const tailStart = t + 0.35;
+
+    const crusher = ctx.createWaveShaper();
+    crusher.curve = BITCRUSH_CURVE;
+
+    const sum = ctx.createGain();
+    sum.gain.setValueAtTime(0.22, t); // instant attack, flat sustain
+    sum.gain.setValueAtTime(0.22, tailStart);
+    sum.gain.setValueAtTime(0, t + dur); // sharp, abrupt release — no tail
+    sum.connect(crusher).connect(this.#master); // dry: straight to master
+
+    const oscs: OscillatorNode[] = [];
+    for (const freq of [220, 311.13]) {
+      // C4 and F#4 — a tritone apart
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(freq, t);
+      // Fast downward pitch envelope at the tail, emphasising the "falling"
+      // loss of momentum.
+      o.frequency.setValueAtTime(freq, tailStart);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.4, t + dur);
+      o.connect(sum);
+      oscs.push(o);
+    }
+
+    const nodes: AudioNode[] = [sum, crusher, ...oscs];
+    this.#reap(oscs[0]!, nodes);
+    for (const o of oscs) {
+      o.start(t);
+      o.stop(t + dur + 0.02);
+    }
   }
 
   dispose(): void {

@@ -275,6 +275,9 @@ const LANDING_CLEARANCE = 2;
  * comparison, is what lets `frame()` apply the bonus exactly once no matter
  * which path produced the settled state. */
 let trickSettled = true;
+/** Correct inputs landed in the active trick, reset to 0 on each ramp hit —
+ * `audio.trickSuccess(step)` steps a pentatonic scale up by this. */
+let trickComboStep = 0;
 /** Seconds left to keep showing a settled ("done"/"error") trick's outcome
  * before the prompt clears — long enough to read the clean-transition/
  * red-cross state plan.md asks for, short enough not to linger over the next
@@ -780,7 +783,9 @@ window.addEventListener("keydown", (e) => {
               : null;
     if (input === null) return;
     e.preventDefault();
+    const stepIndexBefore = trick.stepIndex;
     trick = submitInput(trick, input);
+    if (trick.results[stepIndexBefore] === "correct") audio.trickSuccess(trickComboStep++);
     return;
   }
 
@@ -1023,7 +1028,9 @@ function stepAndStream(dt: number): StepResult {
   ];
 
   const previousOffset = car.offset;
+  const wasDrifting = isDrifting(car);
   const result = stepCar(car, dt, nearby);
+  if (!wasDrifting && isDrifting(car)) audio.oilSlip();
   for (const z of result.coinsCollected) collectCoin(z);
   // Normalised lateral velocity drives the body roll — see CameraRig.updateCarBank.
   slide = Math.max(-1, Math.min(1, lateralVelocity(car, previousOffset, dt) / SLIDE_PEAK_SPEED));
@@ -1096,8 +1103,10 @@ function frame(now: number): void {
       const sequence = ownedTricks[Math.floor(Math.random() * ownedTricks.length)]!;
       trick = startTrick(sequence);
       trickSettled = false;
+      trickComboStep = 0;
       activeRamp = result.ramp;
       car.exemptBarrierZ = -result.ramp.barrierDistance;
+      audio.rampLaunch();
     }
     if (trick.active) trick = advanceTrick(trick, dt);
     // Not `trick.active` alone: `submitInput` (keydown handler, below) can
@@ -1116,7 +1125,12 @@ function frame(now: number): void {
         car.slideFrom = car.offset;
         car.slideT = 0;
       }
-      if (trick.outcome === "done") car.distance += trick.sequence.bonusMetres;
+      if (trick.outcome === "done") {
+        car.distance += trick.sequence.bonusMetres;
+        audio.trickComplete();
+      } else {
+        audio.trickFail();
+      }
       trickSettled = true;
       trickHold = TRICK_HOLD_SECONDS;
     } else if (!trick.active && trickHold > 0) {

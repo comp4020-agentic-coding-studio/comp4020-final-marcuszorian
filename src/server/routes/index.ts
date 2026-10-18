@@ -7,6 +7,7 @@ import { daysRouter } from "./days.ts";
 import { ghostsRouter } from "./ghosts.ts";
 import { runsRouter } from "./runs.ts";
 import { skinsRouter } from "./skins.ts";
+import { tricksRouter } from "./tricks.ts";
 
 export const apiRouter: Router = Router();
 
@@ -34,3 +35,4 @@ apiRouter.use(ghostsRouter);
 apiRouter.use(daysRouter);
 apiRouter.use(skinsRouter);
 apiRouter.use(crewsRouter);
+apiRouter.use(tricksRouter);

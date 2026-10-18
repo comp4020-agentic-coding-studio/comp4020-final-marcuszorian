@@ -74,6 +74,7 @@ export class AudioEngine {
   #ghostLive = true; // is ghostHp -> ghostGain patched in? built patched
   #ghostQuiet = 0; // seconds nearness has sat at/below GHOST_FLOOR
   #sources: Src[] = [];
+  #hidden = false;
   #muted = false;
   /** Whether the score (bed + bassline) is playing. See setMusic. */
   #music = false;
@@ -91,7 +92,7 @@ export class AudioEngine {
 
   unlock(): void {
     if (this.#ctx) {
-      void this.#ctx.resume();
+      if (!this.#hidden) void this.#ctx.resume();
       return;
     }
     let ctx: AudioContext;
@@ -102,7 +103,7 @@ export class AudioEngine {
       this.#ctx = null;
       return;
     }
-    void ctx.resume();
+    if (!this.#hidden) void ctx.resume();
   }
 
   #build(ctx: AudioContext): void {
@@ -295,6 +296,16 @@ export class AudioEngine {
     // this graph, #music has usually been true for a while — without this
     // the bed stays at zero until something happens to toggle it.
     this.setMusic(this.#music);
+  }
+
+  /** Pauses output while the page is hidden. Suspending keeps the graph and
+   * the music's place intact, unlike dispose(). */
+  setHidden(hidden: boolean): void {
+    this.#hidden = hidden;
+    const ctx = this.#ctx;
+    if (!ctx) return;
+    if (hidden) void ctx.suspend();
+    else void ctx.resume();
   }
 
   setMuted(muted: boolean): void {

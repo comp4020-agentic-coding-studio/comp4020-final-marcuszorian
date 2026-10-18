@@ -851,6 +851,13 @@ for (const event of ["pointerdown", "keydown"]) {
   window.addEventListener(event, () => audio.unlock(), { once: true });
 }
 
+// Silence the game while its tab is in the background: a hidden tab should not
+// keep the score playing, and the graph resumes where it stopped on return.
+const syncAudioFocus = (): void => audio.setHidden(document.hidden || !document.hasFocus());
+document.addEventListener("visibilitychange", syncAudioFocus);
+window.addEventListener("blur", syncAudioFocus);
+window.addEventListener("focus", syncAudioFocus);
+
 // ---- title screen and its three destinations ----
 let account: Account | null = null;
 

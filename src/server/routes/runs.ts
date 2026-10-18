@@ -6,14 +6,26 @@ import { isValidPastSeed, todayUtc } from "../lib/seed.ts";
 
 export const runsRouter: Router = Router();
 
+// A generous per-run ceiling on coins picked up along the way — not a real
+// anti-cheat measure (nothing here is), just a sanity clamp so a malformed or
+// hostile request can't mint an arbitrary balance in one call.
+const MAX_COINS_PER_RUN = 500;
+
 runsRouter.post("/run-end", requireAuth, (req, res) => {
-  const { distance, lane, seed } = req.body ?? {};
+  const { distance, lane, seed, coins } = req.body ?? {};
 
   if (typeof distance !== "number" || !Number.isFinite(distance) || distance < 0) {
     res.status(400).json({ error: "distance must be a non-negative number" });
     return;
   }
   const laneValue = typeof lane === "number" && Number.isFinite(lane) ? lane : null;
+  // Coin pickups along the track (doc/adr/0015) — unlike the leaderboard
+  // distance, these are credited every run, not just a personal best: a
+  // coin collected is collected whether or not this run beat your last one.
+  const coinsCollected =
+    typeof coins === "number" && Number.isFinite(coins) && coins >= 0
+      ? Math.min(MAX_COINS_PER_RUN, Math.floor(coins))
+      : 0;
 
   // seed is optional — omitted means "today." When given, it must be a real
   // past-or-today UTC date: you can replay or race history, not a day that
@@ -41,6 +53,10 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
   }
 
   const user = req.user!;
+  if (coinsCollected > 0) {
+    db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(coinsCollected, user.id);
+  }
+
   const existing = db
     .prepare("SELECT distance FROM best_runs WHERE user_id = ? AND track_seed = ?")
     .get(user.id, trackSeed) as { distance: number } | undefined;
@@ -65,5 +81,5 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
     });
   }
 
-  res.status(200).json({ trackSeed, distance: improved ? distance : existing!.distance, improved });
+  res.status(200).json({ trackSeed, distance: improved ? distance : existing!.distance, improved, coinsCollected });
 });

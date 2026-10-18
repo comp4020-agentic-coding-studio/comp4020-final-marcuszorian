@@ -48,11 +48,12 @@ export async function postRunEnd(
   distance: number,
   lane: number,
   seed?: string,
-): Promise<{ improved: boolean }> {
+  coins?: number,
+): Promise<{ improved: boolean; coinsCollected: number }> {
   const res = await fetch("/api/run-end", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ distance, lane, seed }),
+    body: JSON.stringify({ distance, lane, seed, coins }),
   });
   return json(res);
 }

@@ -67,8 +67,24 @@
          from — same reasoning as #ghostLabels below, which was caught doing
          exactly that to the day buttons. */
       #logo,
-      #score {
+      #score,
+      #coinCount {
         pointer-events: none;
+      }
+
+      /* Sits directly under the score, same gold family but smaller/dimmer —
+         a run total, not the headline number. */
+      #coinCount {
+        position: absolute;
+        top: 52px;
+        left: 16px;
+        font-size: 18px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--gold);
+        text-shadow:
+          0 0 2px rgba(10, 5, 0, 0.9),
+          0 0 6px var(--gold);
       }
 
       /* ---- non-interactive overlays: scanlines + vignette ----
@@ -553,7 +569,7 @@
       #leaderboard {
         position: absolute;
         left: 16px;
-        top: 72px;
+        top: 96px;
         width: 190px;
         max-width: calc(100vw - 32px);
         font-size: 12px;
@@ -1128,6 +1144,7 @@
       <div id="vignette"></div>
       <img id="logo" class="flicker" src="/logo.png" alt="" aria-hidden="true" />
       <div id="score">0 m</div>
+      <div id="coinCount">0 coins</div>
       <section id="leaderboard" aria-label="today's leaderboard">
         <details>
           <summary>

@@ -45,6 +45,7 @@ import { TitleScreen } from "./title-screen.ts";
 import { createBarrier, createMovingBarrier } from "./barrier-model.ts";
 import { createOilSpill, type OilDrift } from "./oil-model.ts";
 import { createRamp, type RampFlames } from "./ramp-model.ts";
+import { createCoin } from "./coin-model.ts";
 import {
   advanceTrick,
   createIdleTrick,
@@ -68,6 +69,7 @@ const BEHIND_CHUNKS = 1;
 
 // ---- DOM ----
 const scoreEl = document.getElementById("score")!;
+const coinCountEl = document.getElementById("coinCount")!;
 const crashedEl = document.getElementById("crashed")!;
 const oilPopupEl = document.getElementById("oilPopup")!;
 const trickPromptEl = document.getElementById("trickPrompt")!;
@@ -283,6 +285,9 @@ const TRICK_HOLD_SECONDS = 0.8;
 // integration (Phase 9) replaces this with the server's actual catalogue;
 // until then every run draws from the free default alone.
 const ownedTricks: TrickSequence[] = [DEFAULT_TRICK];
+/** Coins collected so far this run — folded into the balance at `postRunEnd`
+ * alongside the distance, not credited coin-by-coin (doc/adr/0015). */
+let runCoins = 0;
 
 // Which full-screen surface is up. See screens.ts for why this is its own
 // enum rather than a pile of booleans.
@@ -351,9 +356,19 @@ function chunkAt(index: number): THREE.Object3D {
   const movingMeshes: { mesh: THREE.Object3D; lane: number; motion: MotionParams }[] = [];
   const oilDrifts: OilDrift[] = [];
   const rampFlames: RampFlames[] = [];
+  // Keyed by `z` so a collected coin's mesh can be found and removed without
+  // a scene-wide search — same "the chunk remembers which children need
+  // special handling" reasoning as movingMeshes/oilDrifts/rampFlames above.
+  const coins = new Map<number, { group: THREE.Group; update: (dt: number) => void }>();
 
   for (const obstacle of chunk.obstacles) {
-    if (obstacle.kind === "barrier") {
+    if (obstacle.kind === "coin") {
+      const coin = createCoin();
+      coin.group.position.x = obstacle.x;
+      coin.group.position.z = obstacle.z;
+      obj.add(coin.group);
+      coins.set(obstacle.z, coin);
+    } else if (obstacle.kind === "barrier") {
       const barrier = createBarrier();
       barrier.position.set(obstacle.x, 0.5, obstacle.z);
       obj.add(barrier);
@@ -378,6 +393,7 @@ function chunkAt(index: number): THREE.Object3D {
   obj.userData.movingMeshes = movingMeshes;
   obj.userData.oilDrifts = oilDrifts;
   obj.userData.rampFlames = rampFlames;
+  obj.userData.coins = coins;
 
   scene.add(obj);
   chunkObjects.set(index, obj);
@@ -404,6 +420,27 @@ function updateHazards(distance: number, dt: number): void {
     }
     for (const drift of (obj.userData.oilDrifts as OilDrift[] | undefined) ?? []) drift.update(dt);
     for (const flames of (obj.userData.rampFlames as RampFlames[] | undefined) ?? []) flames.update(dt);
+    for (const coin of (obj.userData.coins as Map<number, { group: THREE.Group; update: (dt: number) => void }> | undefined)?.values() ?? [])
+      coin.update(dt);
+  }
+}
+
+/** Removes a collected coin's mesh from whichever resident chunk holds it —
+ * `stepCar`'s collision loop only has the obstacle's `z`, not which chunk
+ * object owns the mesh, so this searches the same small resident set
+ * `updateHazards` already walks every frame. */
+function collectCoin(z: number): void {
+  for (const obj of chunkObjects.values()) {
+    const coins = obj.userData.coins as Map<number, { group: THREE.Group; update: (dt: number) => void }> | undefined;
+    const coin = coins?.get(z);
+    if (coin) {
+      obj.remove(coin.group);
+      coins!.delete(z);
+      runCoins++;
+      coinCountEl.textContent = `${runCoins} coins`;
+      audio.uiBlip("select");
+      return;
+    }
   }
 }
 
@@ -439,6 +476,8 @@ function resetRun(): void {
   speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
   scoreEl.textContent = "0 m";
+  runCoins = 0;
+  coinCountEl.textContent = "0 coins";
   void refreshOwnedTricks();
 }
 
@@ -985,6 +1024,7 @@ function stepAndStream(dt: number): StepResult {
 
   const previousOffset = car.offset;
   const result = stepCar(car, dt, nearby);
+  for (const z of result.coinsCollected) collectCoin(z);
   // Normalised lateral velocity drives the body roll — see CameraRig.updateCarBank.
   slide = Math.max(-1, Math.min(1, lateralVelocity(car, previousOffset, dt) / SLIDE_PEAK_SPEED));
 
@@ -1139,17 +1179,17 @@ function frame(now: number): void {
       // `if (hasAccount())` gate meant to express that and never once was
       // true, so no run was ever saved from a real browser.
       if (onToday) {
-        postRunEnd(car.distance, car.offset, seed)
+        postRunEnd(car.distance, car.offset, seed, runCoins)
           .then((result) => {
             if (result.improved) {
               audio.uiBlip("best");
               void daySelector.load();
-              // Any API request can be the one that settles a closed day
-              // (ADR 0010: there is no scheduler, ordinary traffic does it),
-              // so the balance may have just moved. The title screen reads
-              // it on the way in, so this only has to keep `account` fresh.
-              void refreshTitleAccount();
             }
+            // Coins credit every run, not just an improved one (doc/adr/0015)
+            // — on top of ADR 0010's own reason for this refresh (any request
+            // can be the one that settles a closed day), a run with coins but
+            // no new best still just moved the balance.
+            if (result.improved || result.coinsCollected > 0) void refreshTitleAccount();
           })
           .catch(() => {
             // best-effort — a failed save doesn't block playing again

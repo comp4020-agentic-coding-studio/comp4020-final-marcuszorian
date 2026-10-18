@@ -250,7 +250,7 @@ function rowsThrough(seed: string, distance: number): ObstacleRow[] {
 // everything above this point (PATTERNS, patternIsSolvable, the playlist,
 // rowsThrough, gateSpacingAt) keeps exactly its current meaning. The two new
 // kinds below are additive, parallel mechanisms, not edits to that one.
-export type ObstacleKind = "barrier" | "moving-barrier" | "oil" | "ramp";
+export type ObstacleKind = "barrier" | "moving-barrier" | "oil" | "ramp" | "coin";
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -872,6 +872,60 @@ function lowerBound(rows: readonly { distance: number }[], distance: number): nu
   return lo;
 }
 
+// ---- coin pickups (doc/adr/0015) ----
+// Asset 04 in the concept art: a Subway-Surfers-style trail of coins curving
+// through whichever lane(s) a gate leaves open, rewarding the line a player
+// is already steering to survive the gate rather than a separate thing to
+// seek out. Derived straight from the already-generated barrier rows — no
+// new seeded timeline, so it can never land somewhere the generator hasn't
+// already decided is safe.
+const COIN_GROUP_SIZE = 3; // coins per group, max
+const COIN_SPACING = 4; // metres between coins in a group
+// Not every gate gets a trail — this keeps pickups infrequent rather than
+// lining every single gate.
+const COIN_GATE_CHANCE = 0.3;
+
+interface CoinPickup {
+  readonly distance: number;
+  readonly lane: Lane;
+}
+
+/** Coin trails for every gate row inside [start, end) — at most one short
+ * group, in ONE of the row's open lanes, ending just short of the gate
+ * itself so the trail reads as "the line through it," not as coins sitting
+ * on the barrier. Deterministic per row via a seeded draw, so every client
+ * agrees on which gates get a trail and which lane it sits in. */
+function coinsThrough(seed: string, start: number, end: number): CoinPickup[] {
+  const coins: CoinPickup[] = [];
+  const trailSpan = COIN_GROUP_SIZE * COIN_SPACING;
+  // A trail ends AT its barrier, so a barrier row up to one trail's length
+  // past `end` can still drop coins back into [start, end) — the lookahead
+  // has to reach that far too, not just stop at `end`.
+  const rows = rowsThrough(seed, end + trailSpan);
+  for (let i = lowerBound(rows, start - trailSpan); i < rows.length && rows[i]!.distance < end + trailSpan; i++) {
+    const row = rows[i]!;
+    if (row.blocked.length === 0) continue;
+    const open = LANES.filter((lane) => !row.blocked.includes(lane));
+    if (open.length === 0) continue;
+
+    const rng = mulberry32(hashString(`${seed}:coin:${row.distance}`));
+    if (rng() >= COIN_GATE_CHANCE) continue; // this gate gets no trail
+
+    const lane = open[Math.floor(rng() * open.length)]!;
+    // Oil and ramps already own this lane's read at this distance — a coin
+    // on top of either reads as clutter, not a trail, so skip it rather
+    // than layer on.
+    if (oilNearLane(seed, row.distance, lane) || rampNearLane(seed, row.distance, lane)) continue;
+    for (let k = 1; k <= COIN_GROUP_SIZE; k++) {
+      const distance = row.distance - k * COIN_SPACING;
+      if (distance >= start && distance < end && distance > START_DISTANCE) {
+        coins.push({ distance, lane });
+      }
+    }
+  }
+  return coins;
+}
+
 export function chunkFor(seed: string, index: number): Chunk {
   const start = index * CHUNK_LENGTH;
   const end = start + CHUNK_LENGTH;
@@ -923,6 +977,13 @@ export function chunkFor(seed: string, index: number): Chunk {
       z: -ramp.distance,
       barrierDistance: ramp.barrierDistance,
     });
+  }
+
+  // After oil/ramp are generated for this span, so coinsThrough's lane checks
+  // above read real data rather than an empty cache (same ordering reason
+  // staticBarrierNear/oilNearLane0 already depend on elsewhere in this file).
+  for (const coin of coinsThrough(seed, start, end)) {
+    obstacles.push({ kind: "coin", lane: coin.lane, x: laneX(coin.lane), z: -coin.distance });
   }
 
   return { index, obstacles };

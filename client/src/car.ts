@@ -54,6 +54,11 @@ export interface CarState {
    * landing clear of the hazard it's jumping, regardless of how the trick
    * plays out. */
   exemptBarrierZ: number | null;
+  /** `z` of every coin already signalled collected — a coin obstacle, unlike
+   * a ramp, has no single "currently active" slot to key an idempotency
+   * guard off (`lastRampZ`'s trick), since many can be resident at once, so
+   * this tracks the full set for the run's lifetime instead. */
+  collectedCoinZ: Set<number>;
 }
 
 export function createCar(): CarState {
@@ -69,6 +74,7 @@ export function createCar(): CarState {
     driftT: OIL_SLIDE_SECONDS,
     lastRampZ: null,
     exemptBarrierZ: null,
+    collectedCoinZ: new Set(),
   };
 }
 
@@ -152,10 +158,14 @@ export interface StepResult {
    * `rampHit` — `main.ts` needs both to exempt that barrier from collision
    * and to snap the car past it once the trick settles (doc/adr/0014). */
   ramp: { lane: Lane; barrierDistance: number } | null;
+  /** `z` of every coin touched this frame — `main.ts` removes that mesh and
+   * credits the pickup. Plural because a frame can clip more than one coin
+   * in a dense trail at high speed. */
+  coinsCollected: number[];
 }
 
 export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]): StepResult {
-  if (car.crashed) return { crashed: false, rampHit: false, ramp: null };
+  if (car.crashed) return { crashed: false, rampHit: false, ramp: null, coinsCollected: [] };
 
   car.distance += speedAt(car.distance) * dt;
 
@@ -183,11 +193,24 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
   // barrier part-way through a slide is a crash (ADR 0004).
   let rampHit = false;
   let ramp: { lane: Lane; barrierDistance: number } | null = null;
+  const coinsCollected: number[] = [];
   const carZ = -car.distance;
   for (const obstacle of nearbyObstacles) {
     if (Math.abs(obstacle.z - carZ) > COLLISION_WINDOW) continue;
     const x = obstacleXAt(obstacle, car.distance);
     if (Math.abs(x - car.offset) >= CAR_HALF_WIDTH + OBSTACLE_HALF_WIDTH) continue;
+
+    if (obstacle.kind === "coin") {
+      // Lane-exact, not the wider offset-overlap test every other obstacle
+      // uses: that hitbox is wider than a lane, so mid-slide it was crediting
+      // a coin in the lane the car was merely passing near, not driving
+      // through. A coin only counts for the lane the car is actually in.
+      if (obstacle.lane === car.lane && !car.collectedCoinZ.has(obstacle.z)) {
+        car.collectedCoinZ.add(obstacle.z);
+        coinsCollected.push(obstacle.z);
+      }
+      continue;
+    }
 
     if (obstacle.kind === "oil") {
       // Contact starts a drift, not a crash — a crash afterward, if any, is
@@ -219,8 +242,8 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
     }
 
     car.crashed = true;
-    return { crashed: true, rampHit, ramp };
+    return { crashed: true, rampHit, ramp, coinsCollected };
   }
 
-  return { crashed: false, rampHit, ramp };
+  return { crashed: false, rampHit, ramp, coinsCollected };
 }

@@ -52,6 +52,7 @@ import {
   DEFAULT_TRICK,
   startTrick,
   submitInput,
+  swipeToTrickInput,
   TRICK_WINDOW_SECONDS,
   type TrickSequence,
   type TrickState,
@@ -702,6 +703,15 @@ function steer(dir: -1 | 1): void {
   if (car.lane !== before) audio.laneShift();
 }
 
+/** Answers the live QTE with one token. Shared by the arrow keys and a swipe,
+ * so both count a correct step the same way — one definition of "a step
+ * landed" and one place the success cue fires. */
+function submitTrickInput(input: TrickInput): void {
+  const stepIndexBefore = trick.stepIndex;
+  trick = submitInput(trick, input);
+  if (trick.results[stepIndexBefore] === "correct") audio.trickSuccess(trickComboStep++);
+}
+
 /** A live, advancing run: on the racing screen, not paused, not crashed. */
 function driving(): boolean {
   return running && simulates(screens.current);
@@ -783,9 +793,7 @@ window.addEventListener("keydown", (e) => {
               : null;
     if (input === null) return;
     e.preventDefault();
-    const stepIndexBefore = trick.stepIndex;
-    trick = submitInput(trick, input);
-    if (trick.results[stepIndexBefore] === "correct") audio.trickSuccess(trickComboStep++);
+    submitTrickInput(input);
     return;
   }
 
@@ -795,14 +803,20 @@ window.addEventListener("keydown", (e) => {
   steer(dir);
 });
 
-// Touch: a swipe is the arrow key's mobile twin. One lane per swipe, for the
-// same reason e.repeat is guarded above — a long drag is still one gesture and
-// must not walk the car across the road, so the swipe is spent once it fires.
+// Touch: a swipe is the arrow key's mobile twin. One gesture is one answer,
+// for the same reason e.repeat is guarded above — a long drag is still one
+// gesture and must not walk the car across the road, so the swipe is spent
+// once it fires.
 //
-// The lane changes the moment the threshold is crossed rather than on lift. A
-// slide takes SLIDE_SECONDS and gates arrive a third of a second apart at the
-// top of the ramp, so waiting for the finger to come up would spend most of
-// the reaction window doing nothing.
+// The gesture is answered the moment the threshold is crossed rather than on
+// lift. A slide takes SLIDE_SECONDS and gates arrive a third of a second apart
+// at the top of the ramp, so waiting for the finger to come up would spend most
+// of the reaction window doing nothing.
+//
+// While a trick is live the swipe answers its QTE with a direction (up, down,
+// left or right), the same as an arrow key — a trick's steps include vertical
+// tokens, which a lane swipe can never produce. Otherwise a horizontal swipe
+// steers, and a vertical one does nothing.
 //
 // Only gestures that start on the canvas steer. Everything interactive lives
 // in #hud under pointer-events:auto, so a touch that starts there is someone
@@ -818,8 +832,16 @@ renderer.domElement.addEventListener("pointerdown", (e) => {
 // the HUD mid-swipe is still the same gesture and should still steer.
 window.addEventListener("pointermove", (e) => {
   if (!swipe || swipe.spent || e.pointerId !== swipe.id) return;
+  if (!driving()) return;
   const dx = e.clientX - swipe.x;
   const dy = e.clientY - swipe.y;
+  if (trick.active) {
+    const input = swipeToTrickInput(dx, dy);
+    if (input === null) return;
+    swipe.spent = true;
+    submitTrickInput(input);
+    return;
+  }
   // Horizontal intent: a mostly-vertical drag is not a lane change.
   if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
   swipe.spent = true;

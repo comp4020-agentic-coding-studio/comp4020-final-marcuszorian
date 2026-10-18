@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { advanceTrick, startTrick, TRICK_WINDOW_SECONDS, submitInput } from "../client/src/trick.ts";
+import {
+  advanceTrick,
+  startTrick,
+  swipeToTrickInput,
+  TRICK_SWIPE_MIN_PX,
+  TRICK_WINDOW_SECONDS,
+  submitInput,
+} from "../client/src/trick.ts";
 import type { TrickSequence } from "../client/src/trick.ts";
 
 // Pure state-machine tests for the QTE a ramp starts (doc/adr/0013,
@@ -66,5 +73,43 @@ describe("input is ignored outside an active sequence", () => {
     const settled = state;
     state = advanceTrick(state, 1);
     expect(state).toEqual(settled);
+  });
+});
+
+// A swipe answers the QTE as a direction, the same token an arrow key sends.
+// The mapping is pure, so it is pinned here rather than through a DOM event.
+describe("a swipe maps to the one token it answers", () => {
+  it("reads the dominant axis and its sign, with screen y growing downward", () => {
+    expect(swipeToTrickInput(-80, 0)).toBe("left");
+    expect(swipeToTrickInput(80, 0)).toBe("right");
+    expect(swipeToTrickInput(0, -80)).toBe("up");
+    expect(swipeToTrickInput(0, 80)).toBe("down");
+  });
+
+  it("a diagonal drag still answers one direction, the dominant axis", () => {
+    expect(swipeToTrickInput(-70, 40)).toBe("left");
+    expect(swipeToTrickInput(30, -90)).toBe("up");
+  });
+
+  it("a drag shorter than the threshold answers nothing, so a tap's jitter is not a step", () => {
+    expect(swipeToTrickInput(TRICK_SWIPE_MIN_PX - 1, 0)).toBeNull();
+    expect(swipeToTrickInput(0, -(TRICK_SWIPE_MIN_PX - 1))).toBeNull();
+    expect(swipeToTrickInput(0, 0)).toBeNull();
+  });
+
+  it("drives a whole trick containing vertical steps, which a lane swipe can never produce", () => {
+    const flip: TrickSequence = { id: "flip", name: "flip", steps: ["up", "down", "up"], bonusMetres: 150 };
+    let state = startTrick(flip);
+    for (const [dx, dy] of [
+      [0, -80],
+      [0, 80],
+      [0, -80],
+    ] as const) {
+      const input = swipeToTrickInput(dx, dy);
+      if (input === null) throw new Error("expected a token");
+      state = submitInput(state, input);
+    }
+    expect(state.outcome).toBe("done");
+    expect(state.results).toEqual(["correct", "correct", "correct"]);
   });
 });

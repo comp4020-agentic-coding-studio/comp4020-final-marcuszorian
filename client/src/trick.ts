@@ -137,6 +137,23 @@ export function submitInput(state: TrickState, key: string): TrickState {
   return { ...state, stepIndex: nextIndex, results };
 }
 
+/** Minimum drag, in px, before a gesture reads as a directional token. Same
+ * figure as the lane swipe's `SWIPE_MIN_PX` in `main.ts`, so a tap's jitter
+ * never answers a QTE step. */
+export const TRICK_SWIPE_MIN_PX = 24;
+
+/**
+ * Maps a completed drag to the one QTE token it answers, or `null` when it is
+ * too short to count. The dominant axis wins, so a diagonal drag still reads
+ * as one direction rather than none. Screen y grows downward, so a drag up
+ * has `dy < 0`.
+ */
+export function swipeToTrickInput(dx: number, dy: number): TrickInput | null {
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < TRICK_SWIPE_MIN_PX) return null;
+  if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? "left" : "right";
+  return dy < 0 ? "up" : "down";
+}
+
 /** The free default trick, always available with no purchase (doc/adr/0013:
  * "a free default trick ... is always available without purchase"). Client-
  * side fallback used until the shop/catalogue integration lands. */

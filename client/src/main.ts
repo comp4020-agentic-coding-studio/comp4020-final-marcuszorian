@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import { createCar, driftSpinAngle, isDrifting, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
-import type { CarState } from "./car.ts";
+import type { CarState, StepResult } from "./car.ts";
 import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
 import { archiveAge, DaySelector, todayUtc } from "./days.ts";
 import { GhostLayer } from "./ghosts.ts";
-import { getAccount, postAccount, postRunEnd } from "./net.ts";
+import { getAccount, getTricks, postAccount, postRunEnd } from "./net.ts";
+import type { TrickInput } from "./trick.ts";
 import type { Account } from "./net.ts";
 import { applyPaletteCssVars, palette, roadSurface } from "./palette.ts";
 import { glslVec3 } from "./gradients.ts";
@@ -43,6 +44,8 @@ import { skinColor } from "./skins.ts";
 import { TitleScreen } from "./title-screen.ts";
 import { createBarrier, createMovingBarrier } from "./barrier-model.ts";
 import { createOilSpill, type OilDrift } from "./oil-model.ts";
+import { createRamp, type RampFlames } from "./ramp-model.ts";
+import { advanceTrick, createIdleTrick, DEFAULT_TRICK, startTrick, submitInput, type TrickSequence, type TrickState } from "./trick.ts";
 import { AudioEngine } from "./audio.ts";
 import type { Chunk } from "./track.ts";
 
@@ -58,6 +61,7 @@ const BEHIND_CHUNKS = 1;
 const scoreEl = document.getElementById("score")!;
 const crashedEl = document.getElementById("crashed")!;
 const oilPopupEl = document.getElementById("oilPopup")!;
+const trickPromptEl = document.getElementById("trickPrompt")!;
 const crashedTextEl = document.getElementById("crashedText")!;
 const restartButton = document.getElementById("restart") as HTMLButtonElement;
 const crashedHomeButton = document.getElementById("crashedHome") as HTMLButtonElement;
@@ -230,6 +234,28 @@ let slide = 0; // normalised lateral velocity, for the cosmetic body roll
 let running = false;
 /** Seconds left on the attract demo's wreck before it restarts itself. */
 let attractRespawn = 0;
+/** The active (or idle) QTE trick — doc/adr/0013. Lives outside `CarState`
+ * since `car.ts` has no notion of a trick catalogue; `main.ts` is the only
+ * place that owns both a ramp-hit signal and the player's owned tricks. */
+let trick: TrickState = createIdleTrick();
+/** True once the active trick's bonus (if any) has been applied to
+ * `car.distance`. A trick settles to "done"/"error" either inside
+ * `advanceTrick` (a timeout, called from `frame()`) or inside `submitInput`
+ * (a keypress, called from the keydown handler, entirely outside `frame()`'s
+ * control flow) — this flag, not a same-frame "was it active a moment ago"
+ * comparison, is what lets `frame()` apply the bonus exactly once no matter
+ * which path produced the settled state. */
+let trickSettled = true;
+/** Seconds left to keep showing a settled ("done"/"error") trick's outcome
+ * before the prompt clears — long enough to read the clean-transition/
+ * red-cross state plan.md asks for, short enough not to linger over the next
+ * ramp. */
+let trickHold = 0;
+const TRICK_HOLD_SECONDS = 0.8;
+// Every owned trick, plus the always-free default (doc/adr/0013). Shop
+// integration (Phase 9) replaces this with the server's actual catalogue;
+// until then every run draws from the free default alone.
+const ownedTricks: TrickSequence[] = [DEFAULT_TRICK];
 
 // Which full-screen surface is up. See screens.ts for why this is its own
 // enum rather than a pile of booleans.
@@ -297,6 +323,7 @@ function chunkAt(index: number): THREE.Object3D {
   // this chunk remembers exactly which of its children need it (doc/adr/0012).
   const movingMeshes: { mesh: THREE.Object3D; lane: number; motion: MotionParams }[] = [];
   const oilDrifts: OilDrift[] = [];
+  const rampFlames: RampFlames[] = [];
 
   for (const obstacle of chunk.obstacles) {
     if (obstacle.kind === "barrier") {
@@ -313,11 +340,17 @@ function chunkAt(index: number): THREE.Object3D {
       spill.group.position.set(obstacle.x, 0.02, obstacle.z);
       obj.add(spill.group);
       oilDrifts.push(spill.drift);
+    } else if (obstacle.kind === "ramp") {
+      const ramp = createRamp();
+      ramp.group.position.set(obstacle.x, 0, obstacle.z);
+      obj.add(ramp.group);
+      rampFlames.push(ramp.flames);
     }
   }
 
   obj.userData.movingMeshes = movingMeshes;
   obj.userData.oilDrifts = oilDrifts;
+  obj.userData.rampFlames = rampFlames;
 
   scene.add(obj);
   chunkObjects.set(index, obj);
@@ -327,12 +360,14 @@ function chunkAt(index: number): THREE.Object3D {
 function disposeChunk(obj: THREE.Object3D): void {
   (obj.userData.roadGeometry as THREE.BufferGeometry | undefined)?.dispose();
   for (const drift of (obj.userData.oilDrifts as OilDrift[] | undefined) ?? []) drift.dispose();
+  for (const flames of (obj.userData.rampFlames as RampFlames[] | undefined) ?? []) flames.dispose();
 }
 
 /** Repositions every resident moving-barrier mesh's `x` from the car's own
  * `distance` (doc/adr/0012) and advances every resident oil spill's ambient
- * drift loop — called once a frame from `stepAndStream` with the distance
- * already computed that frame, never from wall-clock time. */
+ * drift loop, and every resident ramp's flame emitters — called once a frame
+ * from `stepAndStream` with the distance already computed that frame, never
+ * from wall-clock time. */
 function updateHazards(distance: number, dt: number): void {
   for (const obj of chunkObjects.values()) {
     for (const { mesh, lane, motion } of (obj.userData.movingMeshes as
@@ -341,6 +376,7 @@ function updateHazards(distance: number, dt: number): void {
       mesh.position.x = movingBarrierX(lane as -1 | 0 | 1, motion, distance);
     }
     for (const drift of (obj.userData.oilDrifts as OilDrift[] | undefined) ?? []) drift.update(dt);
+    for (const flames of (obj.userData.rampFlames as RampFlames[] | undefined) ?? []) flames.update(dt);
   }
 }
 
@@ -368,10 +404,40 @@ function resetRun(): void {
   running = true;
   crashedEl.hidden = true;
   oilPopupEl.hidden = true;
+  trick = createIdleTrick();
+  trickSettled = true;
+  trickHold = 0;
+  updateTrickPrompt(trick);
   setPlayerGhostly(playerCar, false);
   speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
   scoreEl.textContent = "0 m";
+  void refreshOwnedTricks();
+}
+
+/**
+ * Re-reads which tricks this account owns, so a purchase made in the shop
+ * draws into the very next run without needing a page reload. Best-effort
+ * and non-blocking — `ownedTricks` already starts with `DEFAULT_TRICK`, so a
+ * failed or slow fetch just means the run plays with the default alone,
+ * never with nothing to draw from.
+ */
+async function refreshOwnedTricks(): Promise<void> {
+  try {
+    const { tricks } = await getTricks();
+    const owned = tricks
+      .filter((t) => t.owned)
+      .map((t): TrickSequence => ({
+        id: t.id,
+        name: t.name,
+        steps: JSON.parse(t.sequence) as TrickInput[],
+        bonusMetres: t.bonus_metres,
+      }));
+    ownedTricks.length = 0;
+    ownedTricks.push(DEFAULT_TRICK, ...owned);
+  } catch {
+    // Offline or signed out — DEFAULT_TRICK alone is still a valid pool.
+  }
 }
 
 /**
@@ -393,6 +459,10 @@ function startAttract(): void {
   attractRespawn = 0;
   crashedEl.hidden = true;
   oilPopupEl.hidden = true;
+  trick = createIdleTrick();
+  trickSettled = true;
+  trickHold = 0;
+  updateTrickPrompt(trick);
   setPlayerGhostly(playerCar, false);
   // The demo is the game's own showreel, so it gets the speed lines too —
   // the one thing reducedMotion still turns off.
@@ -568,6 +638,27 @@ function driving(): boolean {
   return running && simulates(screens.current);
 }
 
+const TRICK_GLYPH: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→" };
+
+/** Reflects `trick` onto `#trickPrompt` — same `panel` + `hidden` toggle
+ * convention as `#oilPopup` (doc/adr/0012/0013). Shown while a QTE is
+ * active, and held one extra beat on a settled "error" so the red-cross
+ * actually registers before the prompt clears (see `trickHold`). */
+function updateTrickPrompt(state: TrickState): void {
+  const visible = state.active || state.outcome === "error";
+  trickPromptEl.hidden = !visible;
+  if (!visible) return;
+  trickPromptEl.classList.toggle("trick-error", state.outcome === "error");
+  trickPromptEl.classList.toggle("trick-ok", state.outcome === "ok");
+  if (state.outcome === "error") {
+    trickPromptEl.textContent = "✗";
+    return;
+  }
+  const current = state.sequence.steps[state.stepIndex];
+  const next = state.sequence.steps[state.stepIndex + 1];
+  trickPromptEl.textContent = [current, next].filter(Boolean).map((k) => TRICK_GLYPH[k!]).join(" ");
+}
+
 // `e.repeat` is the whole point of this guard — without it, holding Left walks
 // the car across the road at the OS key-repeat rate, which is neither a lane
 // change nor anything the player asked for. The driving() check stays here as
@@ -595,6 +686,27 @@ window.addEventListener("keydown", (e) => {
   }
 
   if (!driving()) return;
+
+  // A trick's input channel is additive, not a change to steering (doc/adr/
+  // 0013) — but while one is live it wins over the lane-shift keys the same
+  // override priority `isDrifting(car)` already gives oil's forced drift.
+  if (trick.active) {
+    const input =
+      e.key === "ArrowUp" || e.key === "w"
+        ? "up"
+        : e.key === "ArrowDown" || e.key === "s"
+          ? "down"
+          : e.key === "ArrowLeft" || e.key === "a"
+            ? "left"
+            : e.key === "ArrowRight" || e.key === "d"
+              ? "right"
+              : null;
+    if (input === null) return;
+    e.preventDefault();
+    trick = submitInput(trick, input);
+    return;
+  }
+
   const dir = e.key === "ArrowLeft" || e.key === "a" ? -1 : e.key === "ArrowRight" || e.key === "d" ? 1 : 0;
   if (dir === 0) return;
   e.preventDefault();
@@ -823,9 +935,10 @@ const cameraLook = new THREE.Vector3();
  * a real run and the attract demo, so the two can never disagree about
  * physics, collision, or how far ahead the road exists.
  *
- * Returns true on the frame the car crashes.
+ * Returns the frame's `StepResult` — `crashed` true the frame the car
+ * crashes, `rampHit` true the frame it first touches a ramp.
  */
-function stepAndStream(dt: number): boolean {
+function stepAndStream(dt: number): StepResult {
   const currentIndex = Math.floor(car.distance / CHUNK_LENGTH);
   const nearby = [
     ...(chunkObjects.has(currentIndex) ? chunkFor(seed, currentIndex).obstacles : []),
@@ -833,7 +946,7 @@ function stepAndStream(dt: number): boolean {
   ];
 
   const previousOffset = car.offset;
-  const justCrashed = stepCar(car, dt, nearby);
+  const result = stepCar(car, dt, nearby);
   // Normalised lateral velocity drives the body roll — see CameraRig.updateCarBank.
   slide = Math.max(-1, Math.min(1, lateralVelocity(car, previousOffset, dt) / SLIDE_PEAK_SPEED));
 
@@ -842,7 +955,7 @@ function stepAndStream(dt: number): boolean {
   pruneChunks(nextIndex);
   updateHazards(car.distance, dt);
 
-  return justCrashed;
+  return result;
 }
 
 function frame(now: number): void {
@@ -874,6 +987,9 @@ function frame(now: number): void {
     } else {
       driveAttract(car, seed);
       stepAndStream(dt);
+      // Attract mode never engages a trick — the autopilot dodges ramps the
+      // same way it already dodges oil (attract.ts applies no kind filter),
+      // so this branch has no ramp-hit signal to act on; see doc/adr/0013.
       if (car.crashed) {
         attractRespawn = ATTRACT_RESPAWN_SECONDS;
         setPlayerGhostly(playerCar, true);
@@ -889,12 +1005,33 @@ function frame(now: number): void {
   }
 
   if (driving()) {
-    const justCrashed = stepAndStream(dt);
+    const result = stepAndStream(dt);
+    const justCrashed = result.crashed;
+
+    if (result.rampHit && !trick.active) {
+      const sequence = ownedTricks[Math.floor(Math.random() * ownedTricks.length)]!;
+      trick = startTrick(sequence);
+      trickSettled = false;
+    }
+    if (trick.active) trick = advanceTrick(trick, dt);
+    // Not `trick.active` alone: `submitInput` (keydown handler, below) can
+    // settle the trick to "done"/"error" outside this function entirely, so
+    // `trickSettled` is what actually tracks "has the bonus been applied
+    // yet," independent of which path produced the settled outcome.
+    if (!trick.active && !trickSettled) {
+      if (trick.outcome === "done") car.distance += trick.sequence.bonusMetres;
+      trickSettled = true;
+      trickHold = TRICK_HOLD_SECONDS;
+    } else if (!trick.active && trickHold > 0) {
+      trickHold = Math.max(0, trickHold - dt);
+      if (trickHold === 0) trick = createIdleTrick();
+    }
 
     scoreEl.textContent = `${Math.floor(car.distance)} m`;
     // Pure readout of car.ts's own drift state — no new state here, just a
     // `hidden` toggle mirroring how `#crashed` is shown (doc/adr/0012).
     oilPopupEl.hidden = !isDrifting(car);
+    updateTrickPrompt(trick);
 
     if (justCrashed) {
       running = false;
@@ -902,6 +1039,10 @@ function frame(now: number): void {
       // A drift that carried the car into a barrier can still be mid-window
       // when the crash lands; the crashed panel is the one that matters now.
       oilPopupEl.hidden = true;
+      trick = createIdleTrick();
+      trickSettled = true;
+      trickHold = 0;
+      updateTrickPrompt(trick);
       setPlayerGhostly(playerCar, true);
       // The rushing-past streaks read as the car's own speed; a dead car
       // isn't going anywhere, so they cut out the instant it crashes rather
@@ -1013,6 +1154,7 @@ function frame(now: number): void {
       cameraTarget.set(x, 4.5, z + 7),
       cameraLook.set(x, 0.5, z - 10),
       speed,
+      driving() && trick.active,
     );
     if (!reducedMotion) camera.position.add(cameraShake.update(dt, elapsed));
   }

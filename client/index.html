@@ -332,6 +332,45 @@
           0 0 20px rgba(255, 42, 109, 0.5);
         border-color: color-mix(in srgb, var(--magenta) 45%, transparent);
       }
+      /* Centre-screen QTE readout (doc/adr/0013) — moved here from top-centre
+         for visibility (it's shown mid-action, with the camera already
+         zoomed in, and needs to read at a glance). Shares #crashed's centre
+         spot, but the two states are mutually exclusive — a trick never runs
+         while the car is crashed — so there is no real overlap. #oilPopup
+         keeps its own separate spot since oil and a trick can't co-occur
+         either, but a future bug making both show at once would be easy to
+         miss if they shared a position too. */
+      #trickPrompt {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        padding: 14px 28px;
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        color: var(--laserCyan);
+        text-shadow:
+          0 0 2px rgba(10, 0, 0, 0.9),
+          0 0 8px var(--magenta),
+          0 0 20px rgba(255, 42, 109, 0.5);
+        border-color: color-mix(in srgb, var(--magenta) 45%, transparent);
+      }
+      #trickPrompt.trick-ok {
+        color: var(--gold);
+        text-shadow:
+          0 0 2px rgba(10, 0, 0, 0.9),
+          0 0 10px var(--gold);
+      }
+      #trickPrompt.trick-error {
+        color: var(--red);
+        border-color: color-mix(in srgb, var(--red) 55%, transparent);
+        text-shadow:
+          0 0 2px rgba(10, 0, 0, 0.9),
+          0 0 10px var(--red),
+          0 0 24px rgba(254, 68, 80, 0.6);
+      }
       #crashedText {
         font-size: 20px;
         font-weight: 700;
@@ -904,6 +943,17 @@
         text-transform: uppercase;
         color: var(--lilac);
       }
+      /* A second catalogue section on the shop screen (doc/adr/0013) — same
+         label treatment as .screen-head h2, just smaller, since it's a
+         subsection rather than the screen's own title. */
+      .screen-subhead {
+        margin: 18px 0 8px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--lilac);
+      }
       .screen-back {
         font: inherit;
         font-size: 12px;
@@ -1076,6 +1126,7 @@
       </button>
       <div id="ghostLabels"></div>
       <div id="oilPopup" class="panel" hidden>slick! hold on</div>
+      <div id="trickPrompt" class="panel" hidden></div>
       <div id="crashed" class="panel" hidden>
         <div id="crashedText"></div>
         <div class="crashed-actions">
@@ -1154,6 +1205,11 @@
         </p>
         <p class="shop-empty screen-hint" hidden>every trim is yours — pick one in cosmetics.</p>
         <ul class="shop-list skin-list"></ul>
+
+        <h3 class="screen-subhead">tricks</h3>
+        <p class="shop-tricks-empty screen-hint" hidden>every trick is yours — a ramp can draw any of them.</p>
+        <ul class="shop-tricks skin-list"></ul>
+
         <p class="shop-status screen-status" role="status"></p>
       </div>
     </section>

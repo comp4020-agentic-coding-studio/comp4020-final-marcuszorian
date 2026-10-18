@@ -35,6 +35,16 @@ export interface CarState {
    * no drift is active — the same "already settled" convention `slideT`
    * uses against `SLIDE_SECONDS`. */
   driftT: number;
+  /** `z` of the last ramp this car signalled contact with, or `null` before
+   * any ramp. A ramp obstacle stays inside `COLLISION_WINDOW` for several
+   * consecutive frames at speed, same as any other obstacle — this is this
+   * module's own idempotency guard against re-signalling the same ramp every
+   * one of those frames, the counterpart to `isDrifting(car)` gating oil's
+   * `startForcedDrift` (doc/adr/0013). Keyed by `z` rather than a boolean
+   * because, unlike a drift, a trick's whole lifecycle lives outside
+   * `CarState` in `main.ts`/`trick.ts` — this module has no "is a trick
+   * still running" flag to check instead. */
+  lastRampZ: number | null;
 }
 
 export function createCar(): CarState {
@@ -48,6 +58,7 @@ export function createCar(): CarState {
     driftFrom: 0,
     driftTarget: 0,
     driftT: OIL_SLIDE_SECONDS,
+    lastRampZ: null,
   };
 }
 
@@ -117,9 +128,20 @@ function obstacleXAt(obstacle: Obstacle, distance: number): number {
     : obstacle.x;
 }
 
-/** Returns true the frame the car crashes. */
-export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]): boolean {
-  if (car.crashed) return false;
+export interface StepResult {
+  /** True the frame the car crashes. */
+  crashed: boolean;
+  /** Set the frame the car first touches a ramp it hasn't already signalled
+   * (see `CarState.lastRampZ`). `main.ts` picks a trick from the player's
+   * owned tricks and calls `startTrick` — that choice lives outside
+   * `CarState`/`car.ts`, which has no notion of a trick catalogue
+   * (doc/adr/0013: trick selection is per-attempt client state, not part of
+   * this module's pure obstacle/physics contract). */
+  rampHit: boolean;
+}
+
+export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]): StepResult {
+  if (car.crashed) return { crashed: false, rampHit: false };
 
   car.distance += speedAt(car.distance) * dt;
 
@@ -145,6 +167,7 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
 
   // Tested against the interpolated offset, not the target lane: clipping a
   // barrier part-way through a slide is a crash (ADR 0004).
+  let rampHit = false;
   const carZ = -car.distance;
   for (const obstacle of nearbyObstacles) {
     if (Math.abs(obstacle.z - carZ) > COLLISION_WINDOW) continue;
@@ -158,9 +181,22 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
       continue;
     }
 
+    if (obstacle.kind === "ramp") {
+      // Contact starts a trick, not a crash — same "contact is not
+      // automatically a crash" precedent oil already set (doc/adr/0013).
+      // Guarded by `lastRampZ` rather than an active-trick flag because
+      // `car.ts` has no visibility into whether `main.ts`'s trick state is
+      // still running.
+      if (car.lastRampZ !== obstacle.z) {
+        car.lastRampZ = obstacle.z;
+        rampHit = true;
+      }
+      continue;
+    }
+
     car.crashed = true;
-    return true;
+    return { crashed: true, rampHit };
   }
 
-  return false;
+  return { crashed: false, rampHit };
 }

@@ -250,7 +250,7 @@ function rowsThrough(seed: string, distance: number): ObstacleRow[] {
 // everything above this point (PATTERNS, patternIsSolvable, the playlist,
 // rowsThrough, gateSpacingAt) keeps exactly its current meaning. The two new
 // kinds below are additive, parallel mechanisms, not edits to that one.
-export type ObstacleKind = "barrier" | "moving-barrier" | "oil";
+export type ObstacleKind = "barrier" | "moving-barrier" | "oil" | "ramp";
 
 export interface Obstacle {
   kind: ObstacleKind;
@@ -453,10 +453,15 @@ const MOVING_LANE_CLEARANCE = CHUNK_LENGTH;
  * is placed there, same direction of dependency `oilThrough` already has on
  * static barriers (moving defers to static, never the reverse). */
 function staticBarrierNearLane0(seed: string, distance: number): boolean {
+  return staticBarrierNearLane(seed, distance, 0);
+}
+
+/** `staticBarrierNearLane0`, generalised to any lane — see `oilNearLane`. */
+function staticBarrierNearLane(seed: string, distance: number, lane: Lane): boolean {
   const rows = rowsThrough(seed, distance + MOVING_LANE_CLEARANCE);
   const start = lowerBound(rows, distance - MOVING_LANE_CLEARANCE);
   for (let i = start; i < rows.length && rows[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
-    if (rows[i]!.blocked.includes(0)) return true;
+    if (rows[i]!.blocked.includes(lane)) return true;
   }
   return false;
 }
@@ -470,11 +475,18 @@ function staticBarrierNearLane0(seed: string, distance: number): boolean {
  * only ever avoid oil that already exists, never oil that would need
  * generating to check. */
 function oilNearLane0(seed: string, distance: number): boolean {
+  return oilNearLane(seed, distance, 0);
+}
+
+/** `oilNearLane0`, generalised to any lane — a ramp is lane-scoped and can
+ * land in any of the three lanes, unlike a moving-barrier row, which only
+ * ever centres on lane 0. */
+function oilNearLane(seed: string, distance: number, lane: Lane): boolean {
   const spills = oilCache.get(seed);
   if (!spills) return false;
   const start = lowerBound(spills, distance - MOVING_LANE_CLEARANCE);
   for (let i = start; i < spills.length && spills[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
-    if (spills[i]!.lanes.includes(0)) return true;
+    if (spills[i]!.lanes.includes(lane)) return true;
   }
   return false;
 }
@@ -584,13 +596,44 @@ function firstFatalDistanceAtOrAfter(seed: string, distance: number): number {
  * i.e. landing right after the very hazard it just stepped around.
  */
 function oilDistanceFor(seed: string, earliest: number, candidate: number): number {
+  return distanceWithLeadToHazard(seed, earliest, candidate, OIL_MIN_LEAD_TO_HAZARD);
+}
+
+/** Last distance at or before `distance` where a fatal hazard sits — the
+ * backward counterpart to `firstFatalDistanceAtOrAfter`, used to keep a ramp
+ * from spawning right out of the footprint of the hazard it's leading away
+ * from. */
+function lastFatalDistanceAtOrBefore(seed: string, distance: number): number {
+  const barrierRows = rowsThrough(seed, distance);
+  let bi = lowerBound(barrierRows, distance) - 1;
+  while (bi >= 0 && barrierRows[bi]!.blocked.length === 0) bi--;
+  const barrierDistance = bi >= 0 ? barrierRows[bi]!.distance : -Infinity;
+
+  const movingRows = movingRowsThrough(seed, distance);
+  let mi = lowerBound(movingRows, distance) - 1;
+  while (mi >= 0 && movingRows[mi]!.row.length === 0) mi--;
+  const movingDistance = mi >= 0 ? movingRows[mi]!.distance : -Infinity;
+
+  return Math.max(barrierDistance, movingDistance);
+}
+
+/**
+ * Pulls a candidate distance back toward `earliest` so at least `minLead`
+ * metres of clear road sit before the next fatal hazard, whenever that
+ * hazard is closer than `candidate` would otherwise place it. Oil-specific:
+ * oil wants to land AT `candidate` whenever the road allows it (its usual
+ * placement interval), only retreating when a hazard crowds that spot. A
+ * ramp wants the opposite — to hug the hazard ahead rather than sit
+ * arbitrarily early — so it uses its own search, `rampSpotFor`, below.
+ */
+function distanceWithLeadToHazard(seed: string, earliest: number, candidate: number, minLead: number): number {
   let lo = earliest;
   for (;;) {
     const hazard = firstFatalDistanceAtOrAfter(seed, lo);
-    if (hazard - lo >= OIL_MIN_LEAD_TO_HAZARD) {
-      return Math.max(lo, Math.min(candidate, hazard - OIL_MIN_LEAD_TO_HAZARD));
+    if (hazard - lo >= minLead) {
+      return Math.max(lo, Math.min(candidate, hazard - minLead));
     }
-    lo = hazard + OIL_MIN_LEAD_TO_HAZARD;
+    lo = hazard + minLead;
   }
 }
 
@@ -605,11 +648,16 @@ function oilDistanceFor(seed: string, earliest: number, candidate: number): numb
  * other direction — oil landing just *behind* a moving barrier it shares a
  * lane with, which that forward-only check never catches. */
 function movingBarrierNearLane0(seed: string, distance: number): boolean {
+  return movingBarrierNearLane(seed, distance, 0);
+}
+
+/** `movingBarrierNearLane0`, generalised to any lane — see `oilNearLane`. */
+function movingBarrierNearLane(seed: string, distance: number, lane: Lane): boolean {
   const rows = movingRowCache.get(seed);
   if (!rows) return false;
   const start = lowerBound(rows, distance - MOVING_LANE_CLEARANCE);
   for (let i = start; i < rows.length && rows[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
-    if (rows[i]!.row.some((spec) => spec.center === 0)) return true;
+    if (rows[i]!.row.some((spec) => spec.center === lane)) return true;
   }
   return false;
 }
@@ -636,9 +684,137 @@ function oilThrough(seed: string, distance: number): OilSpill[] {
       earliest = at + MOVING_LANE_CLEARANCE;
       at = oilDistanceFor(seed, earliest, Math.max(candidate, earliest));
     }
+    // Oil and ramps are both lane-scoped, non-fatal hazards (doc/adr/0012,
+    // doc/adr/0013) — stacking one on the other would read as one obstacle
+    // glitching into another, the same reason moving barriers avoid oil above.
+    while (lanes.some((lane) => rampNearLane(seed, at, lane))) {
+      earliest = at + MOVING_LANE_CLEARANCE;
+      at = oilDistanceFor(seed, earliest, Math.max(candidate, earliest));
+    }
     spills.push({ distance: at, lanes });
   }
   return spills;
+}
+
+// ---- trick ramps ----
+// Asset 03 in the concept art: a non-fatal launch ramp that starts a
+// quick-time-event trick sequence on contact instead of a crash (doc/adr/
+// 0013) — oil's precedent that "contact is not automatically a crash." Placed
+// the same seeded way oil is (a distance and one lane), excluded from
+// `patternIsSolvable` the same way oil is, but with its own, larger minimum
+// lead: a ramp's QTE needs guaranteed clear road for the whole camera-zoom
+// and input window, not just a brief forced drift.
+export interface Ramp {
+  readonly distance: number;
+  readonly lane: Lane;
+}
+
+const RAMP_START_DISTANCE = START_DISTANCE + 120;
+const RAMP_INTERVAL_METRES = 220;
+// Larger than OIL_MIN_LEAD_TO_HAZARD: a trick's QTE window runs far longer
+// than oil's forced drift, so the clear road it needs is proportionally
+// bigger. Capped well below the largest gap the barrier/moving-barrier
+// playlists ever actually leave between two fatal rows (~74m, bounded by
+// PATTERNS/MOVING_PATTERNS' own row counts and REST_ROWS) — at or above that
+// ceiling, `rampSpotFor`'s search has no distance left that satisfies it and
+// loops forever hunting for a gap that can't exist. Exported so a
+// generator-level test can assert the invariant against this exact number,
+// rather than duplicating it as a guessed constant that could silently
+// drift out of sync.
+export const RAMP_MIN_LEAD_TO_HAZARD = 55;
+
+// Metres a ramp must sit clear of the fatal hazard immediately BEHIND it —
+// purely a visual floor (that hazard is already resolved by the time a ramp
+// matters, unlike RAMP_MIN_LEAD_TO_HAZARD, which is load-bearing for "a
+// failed trick never crashes the run"). Without this a ramp can spawn right
+// out of the barrier the player just dodged, which reads as a glitch rather
+// than its own moment. The "jump over a hazard" feel instead comes from
+// hugging the hazard AHEAD (see `rampSpotFor`) — this constant only guards
+// the other direction, and is allowed to lose to `RAMP_PLACEMENT_HAZARD_SCAN_LIMIT`'s
+// fallback in a dense stretch of road, since it's cosmetic rather than a
+// safety invariant.
+const RAMP_MIN_TRAILING_CLEARANCE = 15;
+
+function pickRampLane(rng: () => number): Lane {
+  return LANES[Math.floor(rng() * LANES.length)]!;
+}
+
+const rampCache = new Map<string, Ramp[]>();
+
+/** Whether an *already-placed* ramp in `lane` falls within
+ * `MOVING_LANE_CLEARANCE` of `distance`. Passive cache read, same shape as
+ * `oilNearLane`/`movingBarrierNearLane` — a ramp's own placement loop below
+ * already extends `rampCache` forward of whatever it's checking, so by the
+ * time a caller outside this file (or oil, above) asks, the relevant window
+ * has already been generated. */
+function rampNearLane(seed: string, distance: number, lane: Lane): boolean {
+  const ramps = rampCache.get(seed);
+  if (!ramps) return false;
+  const start = lowerBound(ramps, distance - MOVING_LANE_CLEARANCE);
+  for (let i = start; i < ramps.length && ramps[i]!.distance <= distance + MOVING_LANE_CLEARANCE; i++) {
+    if (ramps[i]!.lane === lane) return true;
+  }
+  return false;
+}
+
+// A bound on how many fatal hazards `rampSpotFor` will reject looking for a
+// spot that satisfies both the leading and trailing clearance at once,
+// before giving up on the trailing half and taking the first hazard-safe
+// spot instead. RAMP_MIN_LEAD_TO_HAZARD is the invariant that actually keeps
+// a trick survivable (doc/adr/0013) — RAMP_MIN_TRAILING_CLEARANCE is purely
+// a visual nicety, so it is the one allowed to lose this trade rather than
+// the search running away hunting for a combination of gaps that a dense
+// stretch of road may never offer.
+const RAMP_PLACEMENT_HAZARD_SCAN_LIMIT = 64;
+
+/**
+ * Where the next ramp lands: hugging close to the first fatal hazard at or
+ * after `floorDistance` — exactly `RAMP_MIN_LEAD_TO_HAZARD` before it,
+ * clamped to never land earlier than `floorDistance` — rather than sitting
+ * however far before it the road happens to be clear. Landing right at that
+ * margin, instead of arbitrarily early, is what makes the ramp read as a
+ * jump over the hazard ahead instead of a precaution taken well clear of it.
+ *
+ * Each loop iteration either returns or steps `lo` past the hazard it just
+ * rejected, so this always terminates: there are finitely many hazards
+ * between any two distances, and once the generated road's speed curve
+ * saturates (doc/adr/0002's `speedAt` cap), hazard spacing settles into the
+ * same repeating pattern forever, so a combination that works recurs rather
+ * than becoming rarer the further out this searches.
+ */
+function rampSpotFor(seed: string, floorDistance: number, lane: Lane): number {
+  let lo = floorDistance;
+  for (let scanned = 0; ; scanned++) {
+    const hazard = firstFatalDistanceAtOrAfter(seed, lo);
+    const huggingHazard = hazard - RAMP_MIN_LEAD_TO_HAZARD;
+    if (huggingHazard >= lo) {
+      const at = Math.max(lo, huggingHazard);
+      const hazardsClear = !(lane === 0 && movingBarrierNearLane(seed, at, lane)) && !oilNearLane(seed, at, lane);
+      const trailingClear = at - lastFatalDistanceAtOrBefore(seed, at) >= RAMP_MIN_TRAILING_CLEARANCE;
+      if (hazardsClear && (trailingClear || scanned >= RAMP_PLACEMENT_HAZARD_SCAN_LIMIT)) return at;
+    }
+    lo = hazard + RAMP_MIN_LEAD_TO_HAZARD;
+  }
+}
+
+function rampThrough(seed: string, distance: number): Ramp[] {
+  let ramps = rampCache.get(seed);
+  if (!ramps) {
+    ramps = [];
+    rampCache.set(seed, ramps);
+  }
+  while (ramps.length === 0 || ramps[ramps.length - 1]!.distance <= distance) {
+    const i = ramps.length;
+    // A hard floor of a full RAMP_INTERVAL_METRES past the previous ramp —
+    // not "+1" — so two ramps can never land close together just because
+    // `rampSpotFor`'s hazard-hugging happens to be satisfiable again almost
+    // immediately.
+    const floorDistance = i === 0 ? RAMP_START_DISTANCE : ramps[i - 1]!.distance + RAMP_INTERVAL_METRES;
+    const lane = pickRampLane(mulberry32(hashString(`${seed}:ramp-lane:${i}`)));
+    const at = rampSpotFor(seed, floorDistance, lane);
+    ramps.push({ distance: at, lane });
+  }
+  return ramps;
 }
 
 /**
@@ -696,6 +872,12 @@ export function chunkFor(seed: string, index: number): Chunk {
     for (const lane of spill.lanes) {
       obstacles.push({ kind: "oil", lane, x: laneX(lane), z: -spill.distance });
     }
+  }
+
+  const ramps = rampThrough(seed, end);
+  for (let i = lowerBound(ramps, start); i < ramps.length && ramps[i]!.distance < end; i++) {
+    const ramp = ramps[i]!;
+    obstacles.push({ kind: "ramp", lane: ramp.lane, x: laneX(ramp.lane), z: -ramp.distance });
   }
 
   return { index, obstacles };

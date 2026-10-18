@@ -144,5 +144,5 @@ export const DEFAULT_TRICK: TrickSequence = {
   id: "default-flip",
   name: "Quick Flip",
   steps: ["up", "down", "up"],
-  bonusMetres: 20,
+  bonusMetres: 150,
 };

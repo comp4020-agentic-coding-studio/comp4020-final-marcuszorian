@@ -108,6 +108,11 @@ export class Leaderboard {
   setInCrew(inCrew: boolean): void {
     if (inCrew === this.#inCrew) return;
     this.#inCrew = inCrew;
+    // Membership changed, so anything fetched under the old scope is stale:
+    // the cached whole-day set would otherwise keep answering the global tab
+    // while the crew tab is shown, which is the bug this clears.
+    this.#globalGhosts = [];
+    this.#pending++;
     // Default to the crew when you join one — it is the set you are driving
     // against, and the road has just narrowed to match.
     this.#scope = inCrew ? "crew" : "global";

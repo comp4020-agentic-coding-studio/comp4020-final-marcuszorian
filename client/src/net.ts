@@ -257,6 +257,24 @@ export class LiveFeed {
     socket.onerror = () => socket.close();
   }
 
+  /**
+   * Drops the socket and opens a fresh one. The server reads the auth cookie
+   * once, at the handshake, so a socket opened before signup keeps answering
+   * as a signed-out viewer after a crew join. A new connection carries the
+   * current cookie and gets the narrowed list.
+   */
+  reconnect(): void {
+    if (this.#closed) return;
+    const old = this.#socket;
+    this.#socket = undefined;
+    if (old) {
+      old.onclose = null;
+      old.onerror = null;
+      old.close();
+    }
+    this.connect();
+  }
+
   dispose(): void {
     this.#closed = true;
     if (this.#timer) clearTimeout(this.#timer);

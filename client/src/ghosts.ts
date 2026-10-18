@@ -93,7 +93,7 @@ export class GhostLayer {
   resubscribe(): void {
     if (!this.#seed) return;
     this.#clear();
-    this.#live.subscribe(this.#seed);
+    this.#live.reconnect();
     if (!this.#liveOpen) void this.#refresh();
   }
 

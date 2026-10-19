@@ -36,10 +36,12 @@ accountRouter.post("/account", (req, res) => {
     );
   } catch {
     // UNIQUE constraint on username — someone already claimed it.
+    console.log(`[account] refused ${username.trim()}: username taken`);
     res.status(409).json({ error: "that username is taken" });
     return;
   }
 
+  console.log(`[account] ${username.trim()} created an account`);
   setAuthCookie(res, token);
   // Same shape as GET /api/me, so the client has one Account type rather than
   // two nearly-identical ones. A fresh account is always broke and wearing

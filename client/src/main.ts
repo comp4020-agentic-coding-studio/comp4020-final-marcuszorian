@@ -932,6 +932,7 @@ const crewScreen = new CrewScreen(crewEl, {
     // re-resolves the connection's crew on every subscribe, exactly as it
     // does on a day change.
     leaderboard.setInCrew(crew !== null);
+    leaderboard.setCrewMembers(crew?.members ?? []);
     ghostLayer.resubscribe();
   },
   onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),

@@ -60,6 +60,8 @@ export class Leaderboard {
   #scope: Scope = "global";
   #inCrew = false;
   #seed = "";
+  /** Your crew's usernames, so their rows can be marked on either tab. */
+  #crewMembers = new Set<string>();
   /** Guards against an in-flight global fetch landing after the day changed. */
   #pending = 0;
 
@@ -89,6 +91,12 @@ export class Leaderboard {
   setViewer(username: string | null): void {
     if (username === this.#viewer) return;
     this.#viewer = username;
+    this.#render();
+  }
+
+  /** Your crew's members, from the crew screen. Empty when you're not in one. */
+  setCrewMembers(usernames: string[]): void {
+    this.#crewMembers = new Set(usernames);
     this.#render();
   }
 
@@ -206,7 +214,14 @@ export class Leaderboard {
 
   #row(entry: Ranked, isViewer: boolean): HTMLLIElement {
     const row = document.createElement("li");
-    row.className = isViewer ? "leaderboard-row is-you" : "leaderboard-row";
+    // Your own row wins over the crew mark: you are in your crew, but "you"
+    // is the more useful thing to find at a glance.
+    const isCrew = !isViewer && this.#crewMembers.has(entry.ghost.username);
+    row.className = isViewer
+      ? "leaderboard-row is-you"
+      : isCrew
+        ? "leaderboard-row is-crew"
+        : "leaderboard-row";
     row.value = entry.rank; // real <li> value, so the rank is in the semantics
 
     const rank = document.createElement("span");

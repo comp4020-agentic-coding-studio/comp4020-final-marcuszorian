@@ -32,6 +32,7 @@
         --mint: #72f1b8;
         --hotWhite: #fff5f6;
         --lilac: #848bbd;
+        --blue: #4da3ff;
       }
 
       html,
@@ -725,6 +726,12 @@
       .leaderboard-row.is-you .leaderboard-name,
       .leaderboard-row.is-you .leaderboard-distance {
         color: var(--mint);
+      }
+      /* Your crew. Same treatment as your own row, in blue, so a crew member
+         reads the same on the crew tab and on the global one. */
+      .leaderboard-row.is-crew .leaderboard-name,
+      .leaderboard-row.is-crew .leaderboard-distance {
+        color: var(--blue);
       }
       .leaderboard-you {
         color: var(--lilac);

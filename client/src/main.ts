@@ -1,5 +1,15 @@
 import * as THREE from "three";
-import { createCar, driftSpinAngle, isDrifting, lateralVelocity, shiftLane, SLIDE_PEAK_SPEED, speedAt, stepCar } from "./car.ts";
+import {
+  createCar,
+  driftSpinAngle,
+  INVINCIBLE_SECONDS,
+  isDrifting,
+  lateralVelocity,
+  shiftLane,
+  SLIDE_PEAK_SPEED,
+  speedAt,
+  stepCar,
+} from "./car.ts";
 import type { CarState, StepResult } from "./car.ts";
 import { CameraRig } from "./camera-rig.ts";
 import { CameraShake, CrashBurst } from "./crash-fx.ts";
@@ -76,6 +86,8 @@ const oilPopupEl = document.getElementById("oilPopup")!;
 const trickPromptEl = document.getElementById("trickPrompt")!;
 const trickStepsEl = document.getElementById("trickSteps")!;
 const trickTimerFillEl = document.getElementById("trickTimerFill") as HTMLDivElement;
+const invincibleEl = document.getElementById("invincible")!;
+const invincibleFillEl = document.getElementById("invincibleFill") as HTMLDivElement;
 const crashedTextEl = document.getElementById("crashedText")!;
 const restartButton = document.getElementById("restart") as HTMLButtonElement;
 const crashedHomeButton = document.getElementById("crashedHome") as HTMLButtonElement;
@@ -476,6 +488,7 @@ function resetRun(): void {
   trickSettled = true;
   trickHold = 0;
   updateTrickPrompt(trick);
+  updateInvincibility();
   setPlayerGhostly(playerCar, false);
   speedLines.mesh.visible = !reducedMotion;
   for (let i = 0; i <= LOOKAHEAD_CHUNKS; i++) chunkAt(i);
@@ -533,6 +546,7 @@ function startAttract(): void {
   trickSettled = true;
   trickHold = 0;
   updateTrickPrompt(trick);
+  updateInvincibility();
   setPlayerGhostly(playerCar, false);
   // The demo is the game's own showreel, so it gets the speed lines too —
   // the one thing reducedMotion still turns off.
@@ -718,6 +732,29 @@ function driving(): boolean {
 }
 
 const TRICK_GLYPH: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→" };
+
+/** Flashes per second while invincible — fast enough to read as a flicker,
+ * slow enough not to strobe (doc/adr/0016). */
+const INVINCIBLE_FLASH_HZ = 5;
+
+/** Reflects `car.invincibleT` onto the HUD bar and the car's look (doc/adr/
+ * 0016): the bar drains over `INVINCIBLE_SECONDS`, and the car alternates
+ * between its solid and translucent looks, reusing `setPlayerGhostly`. Called
+ * every frame, and once from every reset so a leftover flash can't survive a
+ * restart. Reduced-motion holds the translucent look steady rather than
+ * flickering it. A crashed car keeps the ghostly look the crash branch gave
+ * it, so this leaves it alone. */
+function updateInvincibility(): void {
+  const active = car.invincibleT > 0 && !car.crashed;
+  invincibleEl.hidden = !active;
+  if (active) {
+    invincibleFillEl.style.transform = `scaleX(${Math.min(1, car.invincibleT / INVINCIBLE_SECONDS)})`;
+  }
+  if (car.crashed) return;
+  const elapsed = INVINCIBLE_SECONDS - car.invincibleT;
+  const flashing = reducedMotion || Math.floor(elapsed * INVINCIBLE_FLASH_HZ * 2) % 2 === 0;
+  setPlayerGhostly(playerCar, active && flashing);
+}
 
 /** Reflects `trick` onto `#trickPrompt` — same `panel` + `hidden` toggle
  * convention as `#oilPopup` (doc/adr/0012/0013). Shown while a QTE is
@@ -1158,6 +1195,7 @@ function frame(now: number): void {
       }
       if (trick.outcome === "done") {
         car.distance += trick.sequence.bonusMetres;
+        car.invincibleT = INVINCIBLE_SECONDS;
         audio.trickComplete();
       } else {
         audio.trickFail();
@@ -1178,6 +1216,11 @@ function frame(now: number): void {
       activeRamp = null;
     }
 
+    // Real, unscaled dt (doc/adr/0016): two wall-clock seconds, not two
+    // seconds of slow-mo world time.
+    car.invincibleT = Math.max(0, car.invincibleT - dt);
+    updateInvincibility();
+
     scoreEl.textContent = `${Math.floor(car.distance)} m`;
     // Pure readout of car.ts's own drift state — no new state here, just a
     // `hidden` toggle mirroring how `#crashed` is shown (doc/adr/0012).
@@ -1196,6 +1239,8 @@ function frame(now: number): void {
       car.exemptBarrierZ = null;
       activeRamp = null;
       updateTrickPrompt(trick);
+      car.invincibleT = 0;
+      invincibleEl.hidden = true;
       setPlayerGhostly(playerCar, true);
       // The rushing-past streaks read as the car's own speed; a dead car
       // isn't going anywhere, so they cut out the instant it crashes rather

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCar, INVINCIBLE_SECONDS, stepCar } from "../client/src/car.ts";
 import type { Obstacle } from "../client/src/track.ts";
 
-// Post-trick invincibility (doc/adr/0016): while `invincibleT` is above zero a
+// Post-trick invincibility (doc/adr/0017): while `invincibleT` is above zero a
 // barrier no longer crashes the car, but coins, oil and ramps behave as they
 // always did. Pure `stepCar` tests, same client-module-direct style as
 // spec/trick.test.ts — no three.js, no HTTP.

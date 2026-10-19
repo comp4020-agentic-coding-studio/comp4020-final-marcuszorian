@@ -734,7 +734,7 @@ function driving(): boolean {
 const TRICK_GLYPH: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→" };
 
 /** Flashes per second while invincible — fast enough to read as a flicker,
- * slow enough not to strobe (doc/adr/0016). */
+ * slow enough not to strobe (doc/adr/0017). */
 const INVINCIBLE_FLASH_HZ = 5;
 
 /** Reflects `car.invincibleT` onto the HUD bar and the car's look (doc/adr/
@@ -1217,7 +1217,7 @@ function frame(now: number): void {
       activeRamp = null;
     }
 
-    // Real, unscaled dt (doc/adr/0016): two wall-clock seconds, not two
+    // Real, unscaled dt (doc/adr/0017): wall-clock seconds, not
     // seconds of slow-mo world time.
     car.invincibleT = Math.max(0, car.invincibleT - dt);
     updateInvincibility();

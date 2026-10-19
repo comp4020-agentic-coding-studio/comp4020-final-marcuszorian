@@ -19,14 +19,14 @@ const COLLISION_WINDOW = 1.2; // metres of forward slack for a hit test
 export const SLIDE_PEAK_SPEED = (1.5 * laneX(1)) / SLIDE_SECONDS;
 
 /** Seconds the car passes through barriers after a successful trick
- * (doc/adr/0016). Real time, drained by `main.ts` with the unscaled `dt`. */
-export const INVINCIBLE_SECONDS = 2;
+ * (doc/adr/0017). Real time, drained by `main.ts` with the unscaled `dt`. */
+export const INVINCIBLE_SECONDS = 2.5;
 
 export interface CarState {
   distance: number; // metres travelled — this run's score
   /** Seconds of post-trick invincibility left, 0 when none. While above zero,
    * `stepCar` skips barriers (static and moving) — coins, oil and ramps still
-   * behave as normal. `main.ts` sets and drains it (doc/adr/0016). */
+   * behave as normal. `main.ts` sets and drains it (doc/adr/0017). */
   invincibleT: number;
   lane: Lane; // the lane the car is in, or sliding toward
   offset: number; // current lateral position in metres (interpolated)
@@ -250,7 +250,7 @@ export function stepCar(car: CarState, dt: number, nearbyObstacles: Obstacle[]):
       continue;
     }
 
-    // Post-trick invincibility (doc/adr/0016): only the fatal kinds reach
+    // Post-trick invincibility (doc/adr/0017): only the fatal kinds reach
     // here — coins, oil and ramps all `continue`d above — so this is exactly
     // "barriers pass through you".
     if (car.invincibleT > 0) continue;

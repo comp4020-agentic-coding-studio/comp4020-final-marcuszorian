@@ -1,6 +1,6 @@
 # 0016. A completed trick grants two seconds of invincibility
 
-Status: accepted
+Status: superseded by 0017 (the window length: two and a half seconds)
 
 ## Context
 

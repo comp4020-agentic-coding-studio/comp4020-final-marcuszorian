@@ -642,6 +642,20 @@
         color: var(--cyan);
         font-weight: 700;
       }
+      /* Past-day warning. Gold, not red: nothing has gone wrong, the run just
+         doesn't count. */
+      .leaderboard-archive-note {
+        margin: 8px 0 0;
+        padding-top: 6px;
+        border-top: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+        color: var(--gold);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        line-height: 1.4;
+      }
+      .leaderboard-archive-note[hidden] {
+        display: none;
+      }
       .leaderboard-empty {
         margin: 8px 0 0;
         color: var(--lilac);
@@ -1204,6 +1218,9 @@
           </div>
           <p class="leaderboard-empty">nobody has driven this day yet</p>
           <ul class="leaderboard-list" hidden></ul>
+          <!-- Shown only on a past day: a run there plays but is never saved
+               (ADR 0006), so say so where the scores are, not only at the crash. -->
+          <p class="leaderboard-archive-note" hidden>ARCHIVE RUN - NEW SCORES WILL NOT BE RECORDED</p>
         </details>
       </section>
       <!-- Top-right during a run. Escape does the same thing, but a key is

@@ -15,6 +15,7 @@
 // a global/crew switch. That means the panel and the road genuinely disagree
 // for a crew member on the global tab — deliberately, and it is why the global
 // tab does its own fetch rather than reading GhostLayer's road-scoped set.
+import { todayUtc } from "./days.ts";
 import { getGhosts } from "./net.ts";
 import type { Ghost } from "./net.ts";
 
@@ -52,6 +53,7 @@ export class Leaderboard {
   #count: HTMLElement;
   #empty: HTMLElement;
   #tabs: HTMLElement;
+  #archiveNote: HTMLElement;
   #viewer: string | null = null;
   /** The road's set, pushed in by GhostLayer. Crew-scoped once you're in a crew. */
   #roadGhosts: Ghost[] = [];
@@ -71,6 +73,7 @@ export class Leaderboard {
     this.#count = root.querySelector(".leaderboard-count")!;
     this.#empty = root.querySelector(".leaderboard-empty")!;
     this.#tabs = root.querySelector(".leaderboard-tabs")!;
+    this.#archiveNote = root.querySelector(".leaderboard-archive-note")!;
 
     for (const button of this.#tabs.querySelectorAll<HTMLButtonElement>("button[data-scope]")) {
       button.addEventListener("click", () => this.setScope(button.dataset.scope as Scope));
@@ -104,6 +107,7 @@ export class Leaderboard {
   setSeed(seed: string): void {
     if (seed === this.#seed) return;
     this.#seed = seed;
+    this.#archiveNote.hidden = seed === todayUtc();
     this.#globalGhosts = [];
     if (this.#scope === "global" && this.#inCrew) void this.#fetchGlobal();
   }

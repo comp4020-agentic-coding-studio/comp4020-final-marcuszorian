@@ -52,6 +52,7 @@ import { SettingsMenu } from "./settings.ts";
 import { Shop } from "./shop.ts";
 import { skinColor } from "./skins.ts";
 import { TitleScreen } from "./title-screen.ts";
+import { hasSeenTutorial, Tutorial } from "./tutorial.ts";
 import { createBarrier, createMovingBarrier } from "./barrier-model.ts";
 import { createOilSpill, type OilDrift } from "./oil-model.ts";
 import { createRamp, type RampFlames } from "./ramp-model.ts";
@@ -63,6 +64,7 @@ import {
   startTrick,
   submitInput,
   swipeToTrickInput,
+  TRICK_GLYPH,
   TRICK_WINDOW_SECONDS,
   type TrickSequence,
   type TrickState,
@@ -297,10 +299,10 @@ let trickComboStep = 0;
  * ramp. */
 let trickHold = 0;
 const TRICK_HOLD_SECONDS = 0.8;
-// Every owned trick, plus the always-free default (doc/adr/0013). Shop
-// integration (Phase 9) replaces this with the server's actual catalogue;
-// until then every run draws from the free default alone.
-const ownedTricks: TrickSequence[] = [DEFAULT_TRICK];
+// The trick a ramp hit plays (doc/adr/0018) — always the player's equipped
+// trick, falling back to the always-free default when the server reports
+// nothing equipped (a fresh account, or one from before this shipped).
+let equippedTrick: TrickSequence = DEFAULT_TRICK;
 /** Coins collected so far this run — folded into the balance at `postRunEnd`
  * alongside the distance, not credited coin-by-coin (doc/adr/0015). */
 let runCoins = 0;
@@ -495,31 +497,30 @@ function resetRun(): void {
   scoreEl.textContent = "0 m";
   runCoins = 0;
   coinCountEl.textContent = "0 coins";
-  void refreshOwnedTricks();
+  void refreshEquippedTrick();
 }
 
 /**
- * Re-reads which tricks this account owns, so a purchase made in the shop
- * draws into the very next run without needing a page reload. Best-effort
- * and non-blocking — `ownedTricks` already starts with `DEFAULT_TRICK`, so a
- * failed or slow fetch just means the run plays with the default alone,
- * never with nothing to draw from.
+ * Re-reads which trick this account has equipped, so an equip made in
+ * cosmetics draws into the very next run without needing a page reload.
+ * Best-effort and non-blocking — `equippedTrick` already starts at
+ * `DEFAULT_TRICK`, so a failed or slow fetch just means the run plays the
+ * default, never with nothing to draw from.
  */
-async function refreshOwnedTricks(): Promise<void> {
+async function refreshEquippedTrick(): Promise<void> {
   try {
     const { tricks } = await getTricks();
-    const owned = tricks
-      .filter((t) => t.owned)
-      .map((t): TrickSequence => ({
-        id: t.id,
-        name: t.name,
-        steps: JSON.parse(t.sequence) as TrickInput[],
-        bonusMetres: t.bonus_metres,
-      }));
-    ownedTricks.length = 0;
-    ownedTricks.push(DEFAULT_TRICK, ...owned);
+    const equipped = tricks.find((t) => t.equipped);
+    equippedTrick = equipped
+      ? {
+          id: equipped.id,
+          name: equipped.name,
+          steps: JSON.parse(equipped.sequence) as TrickInput[],
+          bonusMetres: equipped.bonus_metres,
+        }
+      : DEFAULT_TRICK;
   } catch {
-    // Offline or signed out — DEFAULT_TRICK alone is still a valid pool.
+    // Offline or signed out — DEFAULT_TRICK is still a valid fallback.
   }
 }
 
@@ -730,8 +731,6 @@ function submitTrickInput(input: TrickInput): void {
 function driving(): boolean {
   return running && simulates(screens.current);
 }
-
-const TRICK_GLYPH: Record<string, string> = { up: "↑", down: "↓", left: "←", right: "→" };
 
 /** Flashes per second while invincible — fast enough to read as a flicker,
  * slow enough not to strobe (doc/adr/0017). */
@@ -945,6 +944,10 @@ const shop = new Shop(shopEl, {
     titleScreen.setCoins(coins);
     cosmetics.render(skins);
   },
+  onTrickPurchase: (coins, tricks) => {
+    titleScreen.setCoins(coins);
+    cosmetics.renderTricks(tricks);
+  },
   onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
 });
 
@@ -953,6 +956,18 @@ const cosmetics = new Cosmetics(cosmeticsEl, {
   // is visible on the title screen the instant it is picked.
   onTrimChange: (skinId) => setPlayerTrim(playerCar, skinColor(skinId)),
   onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
+});
+
+const tutorial = new Tutorial(document.getElementById("tutorialOverlay")!, {
+  goToScreen: (screen) => screens.go(screen),
+  // The tour can leave the demo mid-way through a destination or paused on
+  // the HUD; back to the title is the one resting screen every step can
+  // safely land on, same as the screen-back buttons elsewhere.
+  onFinish: () => screens.go("title"),
+});
+document.getElementById("howToPlay")!.addEventListener("click", () => {
+  audio.uiBlip("select");
+  tutorial.start();
 });
 
 // Back out of any destination to the title screen.
@@ -996,7 +1011,7 @@ const inviteMatch = location.pathname.match(/^\/crew\/([^/]+)\/?$/);
 let pendingInvite = inviteMatch ? decodeURIComponent(inviteMatch[1]!) : null;
 if (pendingInvite) history.replaceState(null, "", "/");
 
-function onSignedIn(found: Account): void {
+function onSignedIn(found: Account, isNewAccount = false): void {
   account = found;
   leaderboard.setViewer(found.username);
   setPlayerTrim(playerCar, skinColor(found.equippedSkin));
@@ -1014,6 +1029,10 @@ function onSignedIn(found: Account): void {
     } else {
       screens.go("title");
     }
+    // Auto-launches once, right after a brand-new account picks a name
+    // (plan.md's tutorial trigger) — not on a returning player's load, and
+    // not on the "already have an account" race in the submit handler below.
+    if (isNewAccount && !hasSeenTutorial()) tutorial.start();
   });
 }
 
@@ -1054,7 +1073,7 @@ usernameForm.addEventListener("submit", (e) => {
 
   postAccount(name)
     .then((created) => {
-      onSignedIn(created); // moves to the title screen, and picks up a queued invite
+      onSignedIn(created, true); // moves to the title screen, and picks up a queued invite
     })
     .catch((err: Error) => {
       // If this browser already has an account (the exact race above, or a
@@ -1169,8 +1188,7 @@ function frame(now: number): void {
     const justCrashed = result.crashed;
 
     if (result.rampHit && !trick.active && result.ramp) {
-      const sequence = ownedTricks[Math.floor(Math.random() * ownedTricks.length)]!;
-      trick = startTrick(sequence);
+      trick = startTrick(equippedTrick);
       trickSettled = false;
       trickComboStep = 0;
       activeRamp = result.ramp;

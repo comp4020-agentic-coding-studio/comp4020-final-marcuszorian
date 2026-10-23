@@ -1,9 +1,9 @@
 // The other coin sink: trick-ramp input sequences. See
 // doc/adr/0010-coin-economy.md and plan.md's "Shop & server" section.
 //
-// Mirrors lib/skins.ts exactly, minus the equip concept — owning a trick is
-// the only state a player has with it, so there is no `equipped` flag and no
-// equivalent of equipSkin().
+// Mirrors lib/skins.ts, including the equip concept added by doc/adr/0018 —
+// equip state lives per-row on `user_tricks` rather than a column on
+// `users`, since it only makes sense attached to a row the player owns.
 //
 // Functions take a Database rather than importing the singleton, so a test
 // can drive them against a throwaway file.
@@ -19,18 +19,23 @@ export interface TrickRow {
 
 export interface TrickView extends TrickRow {
   owned: boolean;
+  equipped: boolean;
 }
 
 export type UnlockResult =
   | { ok: true; coins: number; trick: TrickRow }
   | { ok: false; reason: "unknown" | "insufficient"; coins: number };
 
+export type EquipResult =
+  | { ok: true; equipped: string | null }
+  | { ok: false; reason: "unknown" | "not-owned" };
+
 export function catalogue(db: Database, userId: number | null): TrickView[] {
   const tricks = db
     .prepare("SELECT id, name, sequence, bonus_metres, cost FROM tricks ORDER BY cost")
     .all() as TrickRow[];
   if (userId === null) {
-    return tricks.map((t) => ({ ...t, owned: false }));
+    return tricks.map((t) => ({ ...t, owned: false, equipped: false }));
   }
 
   const owned = new Set(
@@ -38,8 +43,15 @@ export function catalogue(db: Database, userId: number | null): TrickView[] {
       trick_id: string;
     }[]).map((r) => r.trick_id),
   );
+  const equippedRow = db
+    .prepare("SELECT trick_id FROM user_tricks WHERE user_id = ? AND equipped = 1")
+    .get(userId) as { trick_id: string } | undefined;
 
-  return tricks.map((t) => ({ ...t, owned: owned.has(t.id) }));
+  return tricks.map((t) => ({
+    ...t,
+    owned: owned.has(t.id),
+    equipped: equippedRow?.trick_id === t.id,
+  }));
 }
 
 /**
@@ -84,4 +96,40 @@ export function unlockTrick(db: Database, userId: number, trickId: string): Unlo
     if (err instanceof InsufficientCoins) return { ok: false, reason: "insufficient", coins: balance() };
     throw err;
   }
+}
+
+/**
+ * Equips an owned trick, or `null` for the free default (doc/adr/0018).
+ *
+ * Mirrors `equipSkin()`'s not-owned refusal: a client POSTing an id it never
+ * unlocked is exactly the permission check the server, not the client, has
+ * to make. Unlike skins, equip state lives per-row on `user_tricks` rather
+ * than a column on `users` — unsetting any existing equipped row and setting
+ * the new one both happen inside one transaction, the same
+ * unset-then-set shape skins' migration note calls for.
+ */
+export function equipTrick(db: Database, userId: number, trickId: string | null): EquipResult {
+  if (trickId === null) {
+    db.prepare("UPDATE user_tricks SET equipped = 0 WHERE user_id = ?").run(userId);
+    return { ok: true, equipped: null };
+  }
+
+  const exists = db.prepare("SELECT 1 FROM tricks WHERE id = ?").get(trickId);
+  if (!exists) return { ok: false, reason: "unknown" };
+
+  const owns = db
+    .prepare("SELECT 1 FROM user_tricks WHERE user_id = ? AND trick_id = ?")
+    .get(userId, trickId);
+  if (!owns) return { ok: false, reason: "not-owned" };
+
+  const equip = db.transaction(() => {
+    db.prepare("UPDATE user_tricks SET equipped = 0 WHERE user_id = ?").run(userId);
+    db.prepare("UPDATE user_tricks SET equipped = 1 WHERE user_id = ? AND trick_id = ?").run(
+      userId,
+      trickId,
+    );
+  });
+  equip();
+
+  return { ok: true, equipped: trickId };
 }

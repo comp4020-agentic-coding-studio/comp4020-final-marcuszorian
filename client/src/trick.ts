@@ -154,6 +154,23 @@ export function swipeToTrickInput(dx: number, dy: number): TrickInput | null {
   return dy < 0 ? "up" : "down";
 }
 
+/** Maps one QTE input token to the arrow glyph the HUD, shop and cosmetics
+ * all show for it — one mapping so the three call sites can't drift apart on
+ * what "up" looks like. */
+export const TRICK_GLYPH: Record<TrickInput, string> = {
+  up: "↑",
+  down: "↓",
+  left: "←",
+  right: "→",
+};
+
+/** A sequence's full step list rendered as glyphs in order, e.g. "↑ ↓ ↑" —
+ * used by the shop's trick row and cosmetics' trick row (the HUD prompt
+ * renders steps individually instead, so it can tint each one). */
+export function trickGlyphSequence(steps: TrickInput[]): string {
+  return steps.map((step) => TRICK_GLYPH[step]).join(" ");
+}
+
 /** The free default trick, always available with no purchase (doc/adr/0013:
  * "a free default trick ... is always available without purchase"). Client-
  * side fallback used until the shop/catalogue integration lands. */

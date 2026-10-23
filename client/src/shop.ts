@@ -12,10 +12,14 @@
 import { getSkins, getTricks, unlockSkin, unlockTrick } from "./net.ts";
 import type { Skin, Trick } from "./net.ts";
 import { swatch } from "./skins.ts";
+import { trickGlyphSequence } from "./trick.ts";
+import type { TrickInput } from "./trick.ts";
 
 export interface ShopHandlers {
   /** A purchase landed: the balance moved and Cosmetics has a new row. */
   onPurchase(coins: number, skins: Skin[]): void;
+  /** A trick purchase landed: Cosmetics has a new row to equip. */
+  onTrickPurchase?(coins: number, tricks: Trick[]): void;
   onBlip?(kind: "ok" | "error"): void;
 }
 
@@ -70,12 +74,15 @@ export class Shop {
     this.#empty.hidden = forSale.length > 0;
     this.#list.hidden = forSale.length === 0;
 
-    for (const skin of forSale) this.#list.append(this.#row(skin, coins));
+    for (const skin of forSale) this.#list.append(this.#card(skin, coins));
   }
 
-  #row(skin: Skin, coins: number): HTMLLIElement {
-    const row = document.createElement("li");
-    row.className = "skin-row";
+  #card(skin: Skin, coins: number): HTMLDivElement {
+    const card = document.createElement("div");
+    card.className = "shop-card";
+
+    const preview = swatch(skin.id);
+    preview.classList.add("shop-card-swatch");
 
     const name = document.createElement("span");
     name.className = "skin-name";
@@ -90,8 +97,8 @@ export class Shop {
     buy.title = affordable ? `unlock for ${skin.cost} coins` : `costs ${skin.cost} coins`;
     buy.addEventListener("click", () => void this.#unlock(skin));
 
-    row.append(swatch(skin.id), name, buy);
-    return row;
+    card.append(preview, name, buy);
+    return card;
   }
 
   async #unlock(skin: Skin): Promise<void> {
@@ -126,12 +133,20 @@ export class Shop {
     this.#trickEmpty.hidden = forSale.length > 0;
     this.#trickList.hidden = forSale.length === 0;
 
-    for (const trick of forSale) this.#trickList.append(this.#trickRow(trick, coins));
+    for (const trick of forSale) this.#trickList.append(this.#trickCard(trick, coins));
   }
 
-  #trickRow(trick: Trick, coins: number): HTMLLIElement {
-    const row = document.createElement("li");
-    row.className = "skin-row trick-row";
+  #trickCard(trick: Trick, coins: number): HTMLDivElement {
+    const card = document.createElement("div");
+    card.className = "shop-card";
+
+    const glyphs = document.createElement("span");
+    glyphs.className = "trick-glyphs";
+    for (const glyph of trickGlyphSequence(JSON.parse(trick.sequence) as TrickInput[]).split(" ")) {
+      const span = document.createElement("span");
+      span.textContent = glyph;
+      glyphs.append(span);
+    }
 
     const name = document.createElement("span");
     name.className = "skin-name";
@@ -146,8 +161,8 @@ export class Shop {
     buy.title = affordable ? `unlock for ${trick.cost} coins` : `costs ${trick.cost} coins`;
     buy.addEventListener("click", () => void this.#unlockTrick(trick));
 
-    row.append(name, buy);
-    return row;
+    card.append(glyphs, name, buy);
+    return card;
   }
 
   async #unlockTrick(trick: Trick): Promise<void> {
@@ -156,6 +171,7 @@ export class Shop {
     try {
       const { coins, tricks } = await unlockTrick(trick.id);
       this.renderTricks(coins, tricks);
+      this.#handlers.onTrickPurchase?.(coins, tricks);
       this.#say(`${trick.name} unlocked`, "ok");
     } catch (err) {
       this.#say((err as Error).message, "error");

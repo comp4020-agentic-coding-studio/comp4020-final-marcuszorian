@@ -1146,6 +1146,189 @@
       .skin-row.is-equipped .skin-name {
         color: var(--mint);
       }
+      /* The keystroke sequence a trick asks for (doc/adr/0013), shown
+         alongside its name in the shop and cosmetics trick rows — the same
+         glyphs `#trickPrompt` renders mid-race, via trick.ts's shared
+         TRICK_GLYPH map. */
+      .trick-glyphs {
+        flex: none;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        color: var(--cyan);
+      }
+
+      /* ---- shop: a horizontally-scrolling row of cards per section, not a
+         vertical list (plan.md's shop layout rework) — same panel language
+         as .skin-row, just laid out as cards so each one can carry a CSS
+         "preview" animation instead of a bare swatch dot. No 3D rendering:
+         every preview here is a keyframe loop over existing DOM. */
+      .shop-scroll {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        padding: 4px 2px 10px;
+        margin: 0;
+      }
+      .shop-card {
+        scroll-snap-align: start;
+        flex: none;
+        width: 132px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 10px;
+        border-radius: 10px;
+        text-align: center;
+        background: color-mix(in srgb, var(--void) 55%, transparent);
+        border: 1px solid color-mix(in srgb, var(--violet) 24%, transparent);
+      }
+      .shop-card .skin-name {
+        white-space: normal;
+        font-size: 12px;
+        line-height: 1.3;
+      }
+      .shop-card .skin-buy {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      /* The "animated preview" for a trim card: the swatch, enlarged, with a
+         slow glow pulse standing in for a real 3D render. */
+      .shop-card-swatch {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        flex: none;
+        animation: shop-swatch-pulse 2.2s ease-in-out infinite;
+      }
+      @keyframes shop-swatch-pulse {
+        0%, 100% { filter: brightness(1); transform: scale(1); }
+        50% { filter: brightness(1.35); transform: scale(1.08); }
+      }
+      /* The trick card's preview: the glyph sequence with a highlight that
+         cycles across the steps in order, looping — a lightweight stand-in
+         for "watch the combo play." */
+      .shop-card .trick-glyphs {
+        display: flex;
+        gap: 4px;
+        font-size: 15px;
+      }
+      .shop-card .trick-glyphs span {
+        opacity: 0.4;
+        color: var(--cyan);
+        animation: shop-glyph-cycle 1.6s steps(1) infinite;
+      }
+      /* Staggered per glyph (up to MAX_TRICK_STEPS = 4) so the highlight
+         visibly travels left-to-right across the sequence rather than every
+         glyph flashing in unison. */
+      .shop-card .trick-glyphs span:nth-child(1) { animation-delay: 0s; }
+      .shop-card .trick-glyphs span:nth-child(2) { animation-delay: 0.4s; }
+      .shop-card .trick-glyphs span:nth-child(3) { animation-delay: 0.8s; }
+      .shop-card .trick-glyphs span:nth-child(4) { animation-delay: 1.2s; }
+      @keyframes shop-glyph-cycle {
+        0%, 20% { opacity: 1; color: var(--hotWhite); }
+        21%, 100% { opacity: 0.4; color: var(--cyan); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .shop-card-swatch, .shop-card .trick-glyphs span {
+          animation: none;
+        }
+      }
+
+      /* ---- "how to play" entry point on the title screen ---- */
+      #howToPlay {
+        align-self: center;
+        margin-top: 10px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        color: var(--cyan);
+        background: transparent;
+        border: 1px solid color-mix(in srgb, var(--cyan) 45%, transparent);
+      }
+      #howToPlay:hover {
+        color: var(--hotWhite);
+        box-shadow: 0 0 12px rgba(5, 217, 232, 0.4);
+      }
+
+      /* ---- interactive tutorial overlay ----
+         No dimming on the overlay div itself — the dim comes entirely from
+         the spotlight's own box-shadow spread (below), which is the part
+         with a hole in it. Dimming here too would double-darken, and worse,
+         would sit OVER the spotlighted element itself, defeating the point
+         of spotlighting it. */
+      #tutorialOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+      }
+      #tutorialOverlay[hidden] {
+        display: none;
+      }
+      /* A transparent box whose box-shadow is the dim layer: a huge spread
+         radius paints everywhere OUTSIDE the box, leaving the box itself —
+         the actual highlighted element, showing through at full brightness —
+         untouched. */
+      .tutorial-spotlight {
+        position: fixed;
+        border-radius: 10px;
+        border: 3px solid var(--laserCyan);
+        box-shadow:
+          0 0 0 4000px rgba(5, 1, 14, 0.82),
+          0 0 16px 4px rgba(5, 217, 232, 0.9),
+          0 0 40px rgba(5, 217, 232, 0.6);
+        pointer-events: none;
+        transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease;
+      }
+      .tutorial-caption {
+        position: fixed;
+        left: 50%;
+        bottom: 36px;
+        transform: translateX(-50%);
+        width: min(380px, calc(100vw - 32px));
+        padding: 18px 20px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .tutorial-caption-text {
+        margin: 0;
+        color: var(--hotWhite);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .tutorial-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      /* The obstacle/pickup model viewport (tutorial-model-preview.ts) —
+         sits above the caption text on steps that set one. A sliver of the
+         road's own void colour as a backdrop, not a hard white rectangle,
+         so the model reads as "a close-up of the road" rather than a
+         separate UI widget. */
+      .tutorial-preview {
+        width: 100%;
+        height: 140px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--void);
+        border: 1px solid color-mix(in srgb, var(--cyan) 30%, transparent);
+      }
+      .tutorial-preview[hidden] {
+        display: none;
+      }
+      .tutorial-preview-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
       /* A price, not a verb — warm so it reads as a cost next to the balance. */
       .skin-buy {
         color: var(--gold);
@@ -1281,6 +1464,7 @@
           <button type="button" class="title-button" data-destination="shop">shop</button>
           <button type="button" class="title-button" data-destination="cosmetics">cosmetics</button>
         </nav>
+        <button id="howToPlay" type="button" aria-label="how to play">?</button>
       </div>
     </section>
 
@@ -1319,11 +1503,11 @@
           <span class="shop-wallet"><span class="shop-coins">0</span> coins</span>
         </p>
         <p class="shop-empty screen-hint" hidden>every trim is yours — pick one in cosmetics.</p>
-        <ul class="shop-list skin-list"></ul>
+        <div class="shop-list shop-scroll"></div>
 
         <h3 class="screen-subhead">tricks</h3>
         <p class="shop-tricks-empty screen-hint" hidden>every trick is yours — a ramp can draw any of them.</p>
-        <ul class="shop-tricks skin-list"></ul>
+        <div class="shop-tricks shop-scroll"></div>
 
         <p class="shop-status screen-status" role="status"></p>
       </div>
@@ -1340,6 +1524,11 @@
         </p>
         <ul class="cosmetics-list skin-list"></ul>
         <p class="cosmetics-status screen-status" role="status"></p>
+
+        <h3 class="screen-subhead">tricks</h3>
+        <p class="screen-hint">pick which trick plays on a ramp hit.</p>
+        <ul class="cosmetics-tricks skin-list"></ul>
+        <p class="cosmetics-trick-status screen-status" role="status"></p>
       </div>
     </section>
 
@@ -1366,6 +1555,28 @@
         <button type="submit">start driving</button>
         <div id="usernameError"></div>
       </form>
+    </div>
+
+    <!-- ---- interactive tutorial (plan.md) ----
+         A dimmed overlay with a highlighted-border box around whatever step
+         is pointing at, plus a caption/Next/Skip panel — driven entirely by
+         tutorial.ts. Auto-launches once per new account, replayable from the
+         title screen's "?" button. -->
+    <div id="tutorialOverlay" hidden>
+      <div class="tutorial-spotlight" hidden></div>
+      <div class="tutorial-caption panel">
+        <!-- A small second three.js viewport (tutorial-model-preview.ts)
+             rendering the game's actual obstacle/pickup model up close —
+             shown only on the steps that set a `preview` kind. -->
+        <div class="tutorial-preview" hidden>
+          <canvas class="tutorial-preview-canvas"></canvas>
+        </div>
+        <p class="tutorial-caption-text"></p>
+        <div class="tutorial-actions">
+          <button type="button" class="tutorial-skip screen-action">skip</button>
+          <button type="button" class="tutorial-next title-button is-primary">next</button>
+        </div>
+      </div>
     </div>
     <script type="module" src="/bundle.js"></script>
   </body>

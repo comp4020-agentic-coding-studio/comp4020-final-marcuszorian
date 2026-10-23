@@ -9,10 +9,17 @@
 import * as THREE from "three";
 import { gradientGlsl, sunGradientStops } from "./gradients.ts";
 
+// Square, so the shader's UV-space circular mask below renders as a true
+// circle — a non-square plane stretched it into an oval. Width is kept at
+// its old value and height grows to match (rather than shrinking width to
+// the old 95), keeping the sun's horizontal prominence in frame.
 const SUN_WIDTH = 150;
-const SUN_HEIGHT = 95;
+const SUN_HEIGHT = 150;
 const SUN_FORWARD_OFFSET = 260; // metres ahead of the camera
-const SUN_HEIGHT_OFFSET = 24; // metres above camera height
+// Raised along with the taller disc so the now-bigger sun still clears the
+// horizon the same way the old 95-tall disc did, rather than sinking lower
+// into frame.
+const SUN_HEIGHT_OFFSET = 48; // metres above camera height
 
 const vertexShader = /* glsl */ `
   varying vec2 vUv;

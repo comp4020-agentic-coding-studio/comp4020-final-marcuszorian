@@ -102,7 +102,7 @@ export async function equipSkin(id: string | null): Promise<{ equipped: string |
   return json(await fetch(`/api/skins/${encodeURIComponent(id ?? "default")}/equip`, { method: "POST" }));
 }
 
-// ---- tricks (doc/adr/0013) ----
+// ---- tricks (doc/adr/0013, doc/adr/0018) ----
 export interface Trick {
   id: string;
   name: string;
@@ -114,6 +114,7 @@ export interface Trick {
   bonus_metres: number;
   cost: number;
   owned: boolean;
+  equipped: boolean;
 }
 
 export interface TricksResponse {
@@ -127,6 +128,11 @@ export async function getTricks(): Promise<TricksResponse> {
 
 export async function unlockTrick(id: string): Promise<TricksResponse> {
   return json(await fetch(`/api/tricks/${encodeURIComponent(id)}/unlock`, { method: "POST" }));
+}
+
+/** `null` equips the free default trick. */
+export async function equipTrick(id: string | null): Promise<{ equipped: string | null; tricks: Trick[] }> {
+  return json(await fetch(`/api/tricks/${encodeURIComponent(id ?? "default")}/equip`, { method: "POST" }));
 }
 
 // ---- crews ----

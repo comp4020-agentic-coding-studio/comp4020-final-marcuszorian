@@ -53,29 +53,42 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
   }
 
   const user = req.user!;
-  if (coinsCollected > 0) {
-    db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(coinsCollected, user.id);
-    console.log(`[coins] ${user.username} collected ${coinsCollected} on ${trackSeed}`);
-  }
 
-  const existing = db
-    .prepare("SELECT distance FROM best_runs WHERE user_id = ? AND track_seed = ?")
-    .get(user.id, trackSeed) as { distance: number } | undefined;
+  // Both writes commit together: crediting coins for a run that never ends up
+  // recorded (because the upsert below throws) would leave a balance with
+  // nothing to show for it.
+  const { existing, improved } = db.transaction((): {
+    existing: { distance: number } | undefined;
+    improved: boolean;
+  } => {
+    if (coinsCollected > 0) {
+      db.prepare("UPDATE users SET coins = coins + ? WHERE id = ?").run(coinsCollected, user.id);
+      console.log(`[coins] ${user.username} collected ${coinsCollected} on ${trackSeed}`);
+    }
 
-  const improved = !existing || distance > existing.distance;
+    const existing = db
+      .prepare("SELECT distance FROM best_runs WHERE user_id = ? AND track_seed = ?")
+      .get(user.id, trackSeed) as { distance: number } | undefined;
+
+    const improved = !existing || distance > existing.distance;
+    if (improved) {
+      db.prepare(
+        `INSERT INTO best_runs (user_id, track_seed, distance, lane, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT (user_id, track_seed)
+         DO UPDATE SET distance = excluded.distance, lane = excluded.lane,
+                       updated_at = excluded.updated_at`,
+      ).run(user.id, trackSeed, distance, laneValue);
+
+      console.log(
+        `[runs] ${user.username} new highscore ${distance} on ${trackSeed}${existing ? ` (was ${existing.distance})` : " (first run of the day)"}`,
+      );
+    }
+
+    return { existing, improved };
+  })();
+
   if (improved) {
-    db.prepare(
-      `INSERT INTO best_runs (user_id, track_seed, distance, lane, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT (user_id, track_seed)
-       DO UPDATE SET distance = excluded.distance, lane = excluded.lane,
-                     updated_at = excluded.updated_at`,
-    ).run(user.id, trackSeed, distance, laneValue);
-
-    console.log(
-      `[runs] ${user.username} new highscore ${distance} on ${trackSeed}${existing ? ` (was ${existing.distance})` : " (first run of the day)"}`,
-    );
-
     scoreChanged({
       userId: user.id,
       username: user.username,

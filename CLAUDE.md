@@ -12,5 +12,31 @@ What the agent needs to carry from any of it is your call.
 ## Decisions
 
 Decisions live in `doc/adr/`, one numbered file each. Read them before changing
-the stack, storage or data model. To change one, write a record superseding it
-— an accepted record is never edited.
+the stack, storage or data model. To change one, write a record superseding
+it: an accepted record is never edited.
+
+Write the superseding record *before* changing the code, not after. Every
+reversal so far (`0006`, `0009`, `0011`) was decided in prose first and the
+diff followed from it, never a diff that got rationalized into a record
+afterward. A record written after the fact is a changelog, not a decision.
+
+## Client code ships with a browser check, not just a green suite
+
+`client/src/` runs with no automated test of its own kind: the WebSocket feed,
+the frame loop, cookie-based auth. C9 shipped three real bugs there
+(`httpOnly` silently defeating `hasAccount()`, a negative `dt` from
+`requestAnimationFrame` turning distance to `NaN`, a day selector gated on
+recorded runs instead of the calendar) and `pnpm test` stayed green through
+all three, because every HTTP spec sends the cookie by hand and none runs a
+frame loop. Before calling a change to `client/` done, drive it in a real
+browser (or the two-browser-session harness `spec/realtime.test.ts` is modeled
+on) and say in the commit what you checked, not just that tests pass.
+
+## A guarantee is the test that runs, not the function that could
+
+`patternIsSolvable`/`movingPatternIsSolvable` were written to enforce ADR
+0004's promise that every track is beatable, then sat uncalled from anywhere
+for the entire C10 build, the catalogue checked by hand once at authoring time
+and never again. Writing the check is half the job. When a decision record
+names an invariant, wire the function that proves it into `spec/` in the same
+change, or it is prose, not a guarantee.

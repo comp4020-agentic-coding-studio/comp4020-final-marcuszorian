@@ -35,7 +35,7 @@ tricksRouter.post("/tricks/:id/unlock", requireAuth, (req, res) => {
     // just cannot afford it.
     const status = result.reason === "unknown" ? 404 : 402;
     res.status(status).json({
-      error: result.reason === "unknown" ? "no such trick" : "not enough coins",
+      error: result.reason === "unknown" ? "No such trick" : "Not enough coins",
       coins: result.coins,
     });
     return;
@@ -59,7 +59,7 @@ tricksRouter.post("/tricks/:id/equip", requireAuth, (req, res) => {
     // distinction routes/skins.ts's own equip route draws.
     const status = result.reason === "unknown" ? 404 : 403;
     res.status(status).json({
-      error: result.reason === "unknown" ? "no such trick" : "you have not unlocked that trick",
+      error: result.reason === "unknown" ? "No such trick" : "You have not unlocked that trick",
     });
     return;
   }

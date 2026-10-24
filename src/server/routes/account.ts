@@ -24,7 +24,7 @@ accountRouter.get("/me", requireAuth, (req, res) => {
 accountRouter.post("/account", (req, res) => {
   const { username } = req.body ?? {};
   if (typeof username !== "string" || username.trim().length === 0) {
-    res.status(400).json({ error: "username is required" });
+    res.status(400).json({ error: "Username is required" });
     return;
   }
 
@@ -37,7 +37,7 @@ accountRouter.post("/account", (req, res) => {
   } catch {
     // UNIQUE constraint on username — someone already claimed it.
     console.log(`[account] refused ${username.trim()}: username taken`);
-    res.status(409).json({ error: "that username is taken" });
+    res.status(409).json({ error: "That username is taken" });
     return;
   }
 

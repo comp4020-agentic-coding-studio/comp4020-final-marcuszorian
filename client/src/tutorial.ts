@@ -37,7 +37,7 @@ const STEPS: TutorialStep[] = [
     screen: "title",
     targetSelector: ".title-logo",
     caption:
-      "Nightly Build is an endless drive — you race until you crash, and that crash point becomes " +
+      "Nightly Build is an endless drive: you race until you crash, and that crash point becomes " +
       "your best run of the day. The track is a fresh procedural generation every day, and everyone " +
       "races the same one. Everyone else's best run shows up as a ghost car on your road, so you " +
       "drive past other players rather than just checking a scoreboard.",
@@ -50,7 +50,7 @@ const STEPS: TutorialStep[] = [
   {
     screen: "crew",
     targetSelector: "#crewScreen .screen-inner",
-    caption: "Form or join a crew — your crew's ghosts are what you race against on the road.",
+    caption: "Form or join a crew: your crew's ghosts are what you race against on the road.",
   },
   {
     screen: "shop",
@@ -60,12 +60,12 @@ const STEPS: TutorialStep[] = [
   {
     screen: "shop",
     targetSelector: ".shop-tricks",
-    caption: "...and on tricks — each one shows the keystrokes it needs to land.",
+    caption: "...and on tricks: each one shows the keystrokes it needs to land.",
   },
   {
     screen: "cosmetics",
     targetSelector: "#cosmeticsScreen .screen-inner",
-    caption: "Wear a trim and equip a favorite trick — the one that plays when you hit a ramp.",
+    caption: "Wear a trim and equip a favorite trick (the one that plays when you hit a ramp).",
   },
   {
     screen: "racing",
@@ -76,7 +76,7 @@ const STEPS: TutorialStep[] = [
     screen: "racing",
     preview: "barrier",
     caption:
-      "Grey barriers block a lane outright — crash into one and the run ends there. There's always at " +
+      "Grey barriers block a lane outright. Crash into one and the run ends there. There's always at " +
       "least one open lane, so there's always a way through.",
   },
   {
@@ -88,7 +88,7 @@ const STEPS: TutorialStep[] = [
     screen: "racing",
     preview: "oil",
     caption:
-      "An oil slick won't crash you outright — it forces a brief, uncommanded drift into the next lane. " +
+      "An oil slick won't crash you outright: it forces a brief, uncommanded drift into the next lane. " +
       "Watch for what that drift carries you into.",
   },
   {
@@ -96,14 +96,14 @@ const STEPS: TutorialStep[] = [
     targetSelector: "#trickPrompt",
     preview: "ramp",
     caption:
-      "Hit a ramp and a keystroke sequence pops up here — land it before the timer bar runs out for a " +
+      "Hit a ramp and a keystroke sequence pops up here: land it before the timer bar runs out for a " +
       "distance bonus and a few seconds of invincibility. Miss it and you just keep driving, no penalty.",
   },
   {
     screen: "racing",
     targetSelector: "#coinCount",
     preview: "coin",
-    caption: "Coins trail through open lanes — collect them as you pass, and spend the balance in the shop.",
+    caption: "Coins trail through open lanes. Collect them as you pass, and spend the balance in the shop.",
   },
   {
     screen: "paused",

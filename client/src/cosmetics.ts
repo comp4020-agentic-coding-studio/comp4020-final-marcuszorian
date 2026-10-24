@@ -118,7 +118,7 @@ export class Cosmetics {
       const { equipped, skins } = await equipSkin(id);
       this.#handlers.onTrimChange(equipped);
       this.render(skins);
-      this.#say(equipped ? "trim changed" : "back to magenta", "ok");
+      this.#say(equipped ? "Trim changed" : "Back to magenta", "ok");
     } catch (err) {
       // A 403 here means the server says you don't own it — the real check,
       // which this screen's own filtering is only a convenience over.
@@ -171,7 +171,7 @@ export class Cosmetics {
     try {
       const { tricks } = await equipTrick(id);
       this.renderTricks(tricks);
-      this.#sayTrick(id ? "trick equipped" : "back to the default", "ok");
+      this.#sayTrick(id ? "Trick equipped" : "Back to the default", "ok");
     } catch (err) {
       // A 403 here means the server says you don't own it — the real check,
       // which this screen's own filtering is only a convenience over.

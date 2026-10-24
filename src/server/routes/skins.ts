@@ -40,7 +40,7 @@ skinsRouter.post("/skins/:id/unlock", requireAuth, (req, res) => {
     // just cannot afford it.
     const status = result.reason === "unknown" ? 404 : 402;
     res.status(status).json({
-      error: result.reason === "unknown" ? "no such skin" : "not enough coins",
+      error: result.reason === "unknown" ? "No such skin" : "Not enough coins",
       coins: result.coins,
     });
     return;
@@ -65,7 +65,7 @@ skinsRouter.post("/skins/:id/equip", requireAuth, (req, res) => {
     // distinction runs.ts already draws for a past day.
     const status = result.reason === "unknown" ? 404 : 403;
     res.status(status).json({
-      error: result.reason === "unknown" ? "no such skin" : "you have not unlocked that skin",
+      error: result.reason === "unknown" ? "No such skin" : "You have not unlocked that skin",
     });
     return;
   }

@@ -18,7 +18,7 @@ crewsRouter.post("/crews", requireAuth, (req, res) => {
   const user = req.user!;
   const { name, maxJoins, expiresInSeconds } = req.body ?? {};
   if (typeof name !== "string" || name.trim().length === 0) {
-    res.status(400).json({ error: "name is required" });
+    res.status(400).json({ error: "Name is required" });
     return;
   }
   for (const [label, value] of [["maxJoins", maxJoins], ["expiresInSeconds", expiresInSeconds]] as const) {
@@ -71,7 +71,7 @@ crewsRouter.get("/crews/me", optionalAuth, (req, res) => {
 crewsRouter.get("/crews/:token", (req, res) => {
   const crew = crewByToken(db, param(req.params.token));
   if (!crew) {
-    res.status(404).json({ error: "no such invite" });
+    res.status(404).json({ error: "No such invite" });
     return;
   }
   res.status(200).json({ name: crew.name, open: isOpen(crew) });
@@ -88,10 +88,10 @@ crewsRouter.post("/crews/:token/join", requireAuth, (req, res) => {
     const status = result.reason === "unknown" ? 404 : 410;
     const error =
       result.reason === "unknown"
-        ? "no such invite"
+        ? "No such invite"
         : result.reason === "full"
-          ? "this invite has been used as many times as it allows"
-          : "this invite has expired";
+          ? "This invite has been used as many times as it allows"
+          : "This invite has expired";
     res.status(status).json({ error });
     return;
   }

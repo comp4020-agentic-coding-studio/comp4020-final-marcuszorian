@@ -187,8 +187,8 @@ export class Leaderboard {
     this.#empty.hidden = ghosts.length > 0;
     this.#empty.textContent =
       this.#inCrew && this.#scope === "crew"
-        ? "nobody in your crew has driven this day yet"
-        : "nobody has driven this day yet";
+        ? "Nobody in your crew has driven this day yet"
+        : "Nobody has driven this day yet";
     this.#list.hidden = ghosts.length === 0;
 
     const ranked = standings(ghosts);

@@ -1062,7 +1062,7 @@ usernameForm.addEventListener("submit", (e) => {
   // Without this guard, a double-tap (easy to do on mobile, which is where
   // this first showed up) fires two submits before the first response comes
   // back: the first registers the name, the second then correctly — but
-  // confusingly — gets "that username is taken" for a name you just took.
+  // confusingly — gets "That username is taken" for a name you just took.
   if (submittingAccount) return;
   const name = usernameInput.value.trim();
   if (!name) return;
@@ -1272,7 +1272,7 @@ function frame(now: number): void {
       const onToday = seed === todayUtc();
       crashedTextEl.textContent = onToday
         ? `crashed at ${Math.floor(car.distance)} m`
-        : `crashed at ${Math.floor(car.distance)} m — archive run, not recorded`;
+        : `crashed at ${Math.floor(car.distance)} m (archive run, not recorded)`;
 
       const burst = new CrashBurst(new THREE.Vector3(car.offset, 0.6, -car.distance));
       scene.add(burst.points);

@@ -55,7 +55,7 @@ export class CrewScreen {
     try {
       const { crew } = await joinCrew(token);
       this.#setCrew(crew);
-      this.#say(`joined ${crew.name}`, "ok");
+      this.#say(`Joined ${crew.name}`, "ok");
     } catch (err) {
       // An expired or full link is a real answer, not a failure to show.
       this.#say((err as Error).message, "error");
@@ -155,10 +155,10 @@ export class CrewScreen {
       // Clipboard access can be refused (insecure origin, permissions), and
       // the link is on screen either way — so a refusal is a quieter message,
       // not a failure.
-      const refused = (): void => this.#say("couldn't copy — the link is above", "error");
+      const refused = (): void => this.#say("Couldn't copy: the link is above", "error");
       const clipboard = navigator.clipboard;
       if (!clipboard) return refused();
-      void clipboard.writeText(url).then(() => this.#say("invite link copied", "ok"), refused);
+      void clipboard.writeText(url).then(() => this.#say("Invite link copied", "ok"), refused);
     });
 
     frag.append(name, meta, roster, link, copy);
@@ -171,7 +171,7 @@ export class CrewScreen {
     try {
       const { crew, inviteUrl } = await createCrew(name);
       this.#setCrew({ ...crew, inviteUrl });
-      this.#say("crew created — share the link", "ok");
+      this.#say("Crew created: share the link", "ok");
     } catch (err) {
       this.#say((err as Error).message, "error");
     } finally {

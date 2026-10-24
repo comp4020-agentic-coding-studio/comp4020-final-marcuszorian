@@ -15,6 +15,9 @@ import { swatch } from "./skins.ts";
 import { trickGlyphSequence } from "./trick.ts";
 import type { TrickInput } from "./trick.ts";
 
+// Catalogue names are stored lowercase; capitalize only where one opens a toast sentence.
+const sentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 export interface ShopHandlers {
   /** A purchase landed: the balance moved and Cosmetics has a new row. */
   onPurchase(coins: number, skins: Skin[]): void;
@@ -108,7 +111,7 @@ export class Shop {
       const { coins, skins } = await unlockSkin(skin.id);
       this.render(coins, skins);
       this.#handlers.onPurchase(coins, skins);
-      this.#say(`${skin.name} unlocked — wear it in cosmetics`, "ok");
+      this.#say(sentence(`${skin.name} unlocked: wear it in cosmetics`), "ok");
     } catch (err) {
       this.#say((err as Error).message, "error");
     } finally {
@@ -172,7 +175,7 @@ export class Shop {
       const { coins, tricks } = await unlockTrick(trick.id);
       this.renderTricks(coins, tricks);
       this.#handlers.onTrickPurchase?.(coins, tricks);
-      this.#say(`${trick.name} unlocked`, "ok");
+      this.#say(sentence(`${trick.name} unlocked`), "ok");
     } catch (err) {
       this.#say((err as Error).message, "error");
     } finally {

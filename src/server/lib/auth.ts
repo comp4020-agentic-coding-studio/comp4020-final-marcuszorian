@@ -50,7 +50,17 @@ export function tokenFromCookieHeader(header: string | undefined): string | unde
   if (!header) return undefined;
   for (const part of header.split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === COOKIE_NAME) return decodeURIComponent(rest.join("="));
+    if (name === COOKIE_NAME) {
+      // A malformed percent-encoding throws URIError. On /live this runs
+      // inside a raw `ws` message handler with no surrounding try/catch
+      // upstream, so left unguarded it takes down the whole process rather
+      // than just failing one request.
+      try {
+        return decodeURIComponent(rest.join("="));
+      } catch {
+        return undefined;
+      }
+    }
   }
   return undefined;
 }

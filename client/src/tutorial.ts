@@ -38,7 +38,8 @@ const STEPS: TutorialStep[] = [
     targetSelector: ".title-logo",
     caption:
       "Nightly Build is an endless drive — you race until you crash, and that crash point becomes " +
-      "your best run of the day. Everyone else's best run shows up as a ghost car on your road, so you " +
+      "your best run of the day. The track is a fresh procedural generation every day, and everyone " +
+      "races the same one. Everyone else's best run shows up as a ghost car on your road, so you " +
       "drive past other players rather than just checking a scoreboard.",
   },
   {

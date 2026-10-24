@@ -3,7 +3,7 @@
 // Read fresh per request: cheap at this scale, and never goes stale.
 import { Router } from "express";
 import { readFile } from "node:fs/promises";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { marked } from "marked";
 
 export const readmeRouter: Router = Router();
 
@@ -16,7 +16,7 @@ export const readmeRouter: Router = Router();
 // independent surfaces, not worth a shared module for.
 readmeRouter.get("/", async (_req, res) => {
   const src = await readFile("README.md", "utf8");
-  const body = await renderMarkdown(src);
+  const body = await marked.parse(src, { async: true });
   res.type("html").send(`<!doctype html>
 <html lang="en">
   <head>

@@ -10,6 +10,7 @@
 // Functions take a Database rather than importing the singleton, so a test
 // can drive them against a throwaway file.
 import type { Database } from "better-sqlite3";
+import { balanceOf } from "./balance.ts";
 
 export interface SkinRow {
   id: string;
@@ -66,8 +67,7 @@ export function catalogue(db: Database, userId: number | null): SkinView[] {
 class InsufficientCoins extends Error {}
 
 export function unlockSkin(db: Database, userId: number, skinId: string): UnlockResult {
-  const balance = (): number =>
-    (db.prepare("SELECT coins FROM users WHERE id = ?").get(userId) as { coins: number }).coins;
+  const balance = (): number => balanceOf(db, userId);
 
   const skin = db.prepare("SELECT id, name, cost FROM skins WHERE id = ?").get(skinId) as
     | SkinRow

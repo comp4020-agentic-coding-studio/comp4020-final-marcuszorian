@@ -3,6 +3,8 @@
 import { Router } from "express";
 import { db } from "../db.ts";
 import { optionalAuth, requireAuth } from "../lib/auth.ts";
+import { balanceOf } from "../lib/balance.ts";
+import { param } from "../lib/params.ts";
 import { catalogue, equipTrick, unlockTrick } from "../lib/tricks.ts";
 
 export const tricksRouter: Router = Router();
@@ -14,17 +16,10 @@ export const tricksRouter: Router = Router();
 tricksRouter.get("/tricks", optionalAuth, (req, res) => {
   const user = req.user ?? null;
   res.status(200).json({
-    coins: user
-      ? (db.prepare("SELECT coins FROM users WHERE id = ?").get(user.id) as { coins: number }).coins
-      : 0,
+    coins: user ? balanceOf(db, user.id) : 0,
     tricks: catalogue(db, user?.id ?? null),
   });
 });
-
-// Express 5 types a route param as `string | string[]` (wildcards can
-// repeat), so every one of them gets flattened to the single value these
-// routes mean.
-const param = (value: string | string[]): string => (Array.isArray(value) ? value[0]! : value);
 
 tricksRouter.post("/tricks/:id/unlock", requireAuth, (req, res) => {
   const user = req.user!;

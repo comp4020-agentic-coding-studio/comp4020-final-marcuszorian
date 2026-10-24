@@ -8,6 +8,8 @@
 import { Router } from "express";
 import { db } from "../db.ts";
 import { optionalAuth, requireAuth } from "../lib/auth.ts";
+import { balanceOf } from "../lib/balance.ts";
+import { param } from "../lib/params.ts";
 import { catalogue, equipSkin, unlockSkin } from "../lib/skins.ts";
 
 export const skinsRouter: Router = Router();
@@ -19,16 +21,10 @@ export const skinsRouter: Router = Router();
 skinsRouter.get("/skins", optionalAuth, (req, res) => {
   const user = req.user ?? null;
   res.status(200).json({
-    coins: user
-      ? (db.prepare("SELECT coins FROM users WHERE id = ?").get(user.id) as { coins: number }).coins
-      : 0,
+    coins: user ? balanceOf(db, user.id) : 0,
     skins: catalogue(db, user?.id ?? null),
   });
 });
-
-// Express 5 types a route param as `string | string[]` (wildcards can repeat),
-// so every one of them gets flattened to the single value these routes mean.
-const param = (value: string | string[]): string => (Array.isArray(value) ? value[0]! : value);
 
 skinsRouter.post("/skins/:id/unlock", requireAuth, (req, res) => {
   const user = req.user!;

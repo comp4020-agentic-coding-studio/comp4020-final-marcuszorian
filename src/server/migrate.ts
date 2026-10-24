@@ -4,9 +4,7 @@
 // release_command, because release-phase machines don't have the volume
 // attached (fly.toml says so). Idempotent: safe to run on every boot/restart.
 import { readdirSync, readFileSync } from "node:fs";
-import { openDb } from "./db.ts";
-
-const db = openDb();
+import { db } from "./db.ts";
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS schema_migrations (

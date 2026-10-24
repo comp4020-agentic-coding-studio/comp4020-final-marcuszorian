@@ -8,14 +8,11 @@ import { Router } from "express";
 import { db } from "../db.ts";
 import { optionalAuth, requireAuth } from "../lib/auth.ts";
 import { createCrew, crewByToken, crewOf, isOpen, joinCrew, viewOf } from "../lib/crews.ts";
+import { param } from "../lib/params.ts";
 
 export const crewsRouter: Router = Router();
 
 const MAX_NAME = 32;
-
-// Express 5 types a route param as `string | string[]` (wildcards can
-// repeat), so flatten to the single value these routes mean.
-const param = (value: string | string[]): string => (Array.isArray(value) ? value[0]! : value);
 
 crewsRouter.post("/crews", requireAuth, (req, res) => {
   const user = req.user!;

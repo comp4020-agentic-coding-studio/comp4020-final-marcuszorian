@@ -127,6 +127,15 @@ function obstacleLaneAt(obstacle: Obstacle): Lane[] {
  * belong in a hazard-avoidance clearance count. */
 const NON_FATAL_KINDS: ReadonlySet<Obstacle["kind"]> = new Set(["coin", "oil", "ramp"]);
 
+/** Whether a ramp sits in `lane` among the already-windowed `obstacles`
+ * (doc/adr/0019). Only `obstacleLaneAt` membership is checked — distance is
+ * irrelevant since `obstacles` is already `obstaclesAhead`'s lookahead
+ * window — but routed through the same helper `clearanceIn` uses so a ramp
+ * reads as "in" whichever lane it actually occupies. */
+function hasRampIn(lane: Lane, obstacles: Obstacle[]): boolean {
+  return obstacles.some((obstacle) => obstacle.kind === "ramp" && obstacleLaneAt(obstacle).includes(lane));
+}
+
 /**
  * Metres of clear road in `lane`, capped at the lookahead window.
  *
@@ -165,8 +174,33 @@ function clearanceIn(lane: Lane, obstacles: Obstacle[], distance: number): numbe
 export function chooseLane(current: Lane, seed: string, distance: number): Lane {
   const obstacles = obstaclesAhead(seed, distance);
   const here = clearanceIn(current, obstacles, distance);
-  // Already fine where it is — hold the line rather than drift for nothing.
-  if (here >= COMFORTABLE_M) return current;
+  // Already fine where it is, hazard-wise — but a ramp sitting in the lane
+  // is still worth sidestepping if another lane is just as clear and
+  // ramp-free (doc/adr/0019). This only runs once the real hazard check
+  // above has nothing to say, so it can never out-rank dodging a barrier —
+  // a ramp in the only safe lane is still driven through.
+  if (here >= COMFORTABLE_M) {
+    if (!hasRampIn(current, obstacles)) return current;
+    const candidates = LANES.filter((lane) => lane !== current).sort(
+      (a, b) => Math.abs(a - current) - Math.abs(b - current),
+    );
+    for (const lane of candidates) {
+      if (hasRampIn(lane, obstacles)) continue;
+      if (clearanceIn(lane, obstacles, distance) < COMFORTABLE_M) continue;
+      // Same mid-slide crossing check chooseLane's hazard branch uses below:
+      // a two-lane dodge still slides through the lane in between.
+      const step = lane > current ? 1 : -1;
+      let crossingSafe = true;
+      for (let crossed = current + step; crossed !== lane; crossed += step) {
+        if (clearanceIn(crossed as Lane, obstacles, distance) < CROSSING_DANGER_M) {
+          crossingSafe = false;
+          break;
+        }
+      }
+      if (crossingSafe) return lane;
+    }
+    return current; // every other lane either has a ramp too or isn't safely reachable
+  }
 
   let best = current;
   let bestClearance = here + SWITCH_MARGIN; // the incumbent's head start

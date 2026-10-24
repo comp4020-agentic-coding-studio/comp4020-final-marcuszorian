@@ -1160,9 +1160,10 @@ function frame(now: number): void {
     } else {
       driveAttract(car, seed);
       stepAndStream(dt);
-      // Attract mode never engages a trick — the autopilot dodges ramps the
-      // same way it already dodges oil (attract.ts applies no kind filter),
-      // so this branch has no ramp-hit signal to act on; see doc/adr/0013.
+      // Attract mode never engages a trick — the autopilot now actively
+      // steers clear of ramps when the road is open (doc/adr/0019) and still
+      // drives over one when real hazards leave no safer lane, but either
+      // way this branch has no ramp-hit signal to act on.
       if (car.crashed) {
         attractRespawn = ATTRACT_RESPAWN_SECONDS;
         setPlayerGhostly(playerCar, true);

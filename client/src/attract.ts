@@ -14,8 +14,8 @@
 import * as THREE from "three";
 import { shiftLane } from "./car.ts";
 import type { CarState } from "./car.ts";
-import { chunkFor, CHUNK_LENGTH, laneX, LANES } from "./track.ts";
-import type { Lane, Obstacle } from "./track.ts";
+import { chunkFor, CHUNK_LENGTH, laneX, LANE_HALF_WIDTH, LANES, movingBarrierX } from "./track.ts";
+import type { Lane, MotionParams, Obstacle } from "./track.ts";
 
 /**
  * How far ahead the autopilot looks, in metres.
@@ -46,6 +46,37 @@ const COMFORTABLE_M = LOOKAHEAD_M;
 const SWITCH_MARGIN = 6;
 
 /**
+ * Metres BEHIND the car still counted as "ahead" for lookahead purposes.
+ *
+ * `stepCar`'s real collision test (car.ts's `COLLISION_WINDOW`) keeps an
+ * obstacle live for 1.2m after the car's distance passes its row — clipping a
+ * barrier mid-crossing is still a crash. Without this margin, an obstacle the
+ * car has JUST passed (by a fraction of a metre) drops out of
+ * `obstaclesAhead` and that lane reads as fully clear a frame before the
+ * hitbox actually lets go of it, which is exactly early enough to steer the
+ * car into the barrier it was still passing.
+ */
+const TRAIL_MARGIN = 2;
+
+/**
+ * Metres within which a hazard in a lane merely PASSED THROUGH (not the
+ * destination) rules that lane change out.
+ *
+ * `shiftLane` only ever targets one lane at a time, but `chooseLane` can name
+ * a destination two lanes from `current` — `driveAttract` then walks there
+ * over two separate one-lane calls across consecutive frames, which slides
+ * the car's lateral offset across the lane in between. A hazard sitting there
+ * close to the car's current distance gets clipped mid-slide even though the
+ * destination lane itself was clear the whole time. Sized to the furthest a
+ * lane change's own slide can carry the car forward while still resolving
+ * within `car.ts`'s `COLLISION_WINDOW` of a hazard — at the top speed cap
+ * (65 m/s) over `SLIDE_SECONDS` (0.12s), that's under 8m; this adds margin
+ * rather than trim it exactly, since a near-miss is indistinguishable from a
+ * hit here and tuning this tight only earns a crash video, not a smoother one.
+ */
+const CROSSING_DANGER_M = 10;
+
+/**
  * Seconds the wreck stays on screen before the demo restarts.
  *
  * The autopilot is good but the track is generated, not designed, and a
@@ -65,24 +96,59 @@ export const ATTRACT_RESPAWN_SECONDS = 1.6;
  * with whatever is drawn later by construction (ADR 0002/0004).
  */
 export function obstaclesAhead(seed: string, distance: number): Obstacle[] {
-  const from = Math.floor(distance / CHUNK_LENGTH);
+  const from = Math.floor((distance - TRAIL_MARGIN) / CHUNK_LENGTH);
   const to = Math.floor((distance + LOOKAHEAD_M) / CHUNK_LENGTH);
   const found: Obstacle[] = [];
   for (let index = from; index <= to; index++) {
     for (const obstacle of chunkFor(seed, index).obstacles) {
       // Obstacles sit at negative z; the car's distance is positive.
       const ahead = -obstacle.z - distance;
-      if (ahead >= 0 && ahead <= LOOKAHEAD_M) found.push(obstacle);
+      if (ahead >= -TRAIL_MARGIN && ahead <= LOOKAHEAD_M) found.push(obstacle);
     }
   }
   return found;
 }
 
-/** Metres of clear road in `lane`, capped at the lookahead window. */
+/** Live `x` of an obstacle, matching car.ts's own `obstacleXAt`: a moving
+ * barrier's recorded `x` is only ever correct at its own anchor distance, so
+ * lane membership has to be read off its swept position there, not off the
+ * static `lane` it's filed under (ADR 0012). Without this, the autopilot
+ * never sees a moving barrier swing into a lane other than the one it
+ * spawned centred on — exactly the lanes it's most dangerous in, since that's
+ * the sweep's whole point. */
+function obstacleLaneAt(obstacle: Obstacle): Lane[] {
+  if (obstacle.kind !== "moving-barrier" || !obstacle.motion) return [obstacle.lane];
+  const x = movingBarrierX(obstacle.lane, obstacle.motion as MotionParams, obstacle.motion.anchor);
+  return LANES.filter((lane) => Math.abs(x - laneX(lane)) < LANE_HALF_WIDTH);
+}
+
+/** Kinds `stepCar` never crashes on contact with (doc/adr/0012, 0013) — a
+ * coin is a pickup, oil starts a drift, a ramp starts a trick. None of them
+ * belong in a hazard-avoidance clearance count. */
+const NON_FATAL_KINDS: ReadonlySet<Obstacle["kind"]> = new Set(["coin", "oil", "ramp"]);
+
+/**
+ * Metres of clear road in `lane`, capped at the lookahead window.
+ *
+ * Non-fatal obstacles don't count. Coins: `coinsThrough` (track.ts) seeds a
+ * trail in a gate's OPEN lane, ending just short of the barrier row itself, so
+ * a coin sits closer than that row's real hazards ever would — counting it
+ * made the actual safe lane read as less clear than a lane blocked by a
+ * barrier further out, steering the car into the barrier and away from the
+ * coin, the opposite of both. Oil and ramps: weighing a merely-annoying
+ * obstacle the same as a fatal one let `SWITCH_MARGIN`'s hysteresis hold the
+ * car in a lane with a real barrier ahead, because the alternative lane
+ * (blocked only by oil, further off) never looked different enough to be
+ * worth the swap.
+ *
+ * Lane membership goes through `obstacleLaneAt` rather than `obstacle.lane`
+ * directly, so a moving barrier swept into `lane` registers here even though
+ * it's filed under a different centre lane.
+ */
 function clearanceIn(lane: Lane, obstacles: Obstacle[], distance: number): number {
   let nearest = LOOKAHEAD_M;
   for (const obstacle of obstacles) {
-    if (obstacle.lane !== lane) continue;
+    if (NON_FATAL_KINDS.has(obstacle.kind) || !obstacleLaneAt(obstacle).includes(lane)) continue;
     nearest = Math.min(nearest, -obstacle.z - distance);
   }
   return nearest;
@@ -106,7 +172,15 @@ export function chooseLane(current: Lane, seed: string, distance: number): Lane 
   let bestClearance = here + SWITCH_MARGIN; // the incumbent's head start
   for (const lane of LANES) {
     if (lane === current) continue;
-    const clearance = clearanceIn(lane, obstacles, distance);
+    let clearance = clearanceIn(lane, obstacles, distance);
+    // A two-lane move slides the car through the lane in between (see
+    // CROSSING_DANGER_M) — a close hazard there can still be hit even though
+    // `lane` itself is clear.
+    const step = lane > current ? 1 : -1;
+    for (let crossed = current + step; crossed !== lane; crossed += step) {
+      const throughClearance = clearanceIn(crossed as Lane, obstacles, distance);
+      if (throughClearance < CROSSING_DANGER_M) clearance = Math.min(clearance, throughClearance);
+    }
     // Prefer the nearer lane on a tie: a one-step move happens sooner than a
     // two-step one, which matters when the gate is close.
     const closer = Math.abs(lane - current) < Math.abs(best - current);

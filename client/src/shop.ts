@@ -97,7 +97,7 @@ export class Shop {
     buy.textContent = `${skin.cost}`;
     const affordable = coins >= skin.cost;
     buy.disabled = !affordable;
-    buy.title = affordable ? `unlock for ${skin.cost} coins` : `costs ${skin.cost} coins`;
+    buy.title = affordable ? `Unlock for ${skin.cost} coins` : `Costs ${skin.cost} coins`;
     buy.addEventListener("click", () => void this.#unlock(skin));
 
     card.append(preview, name, buy);
@@ -161,7 +161,7 @@ export class Shop {
     buy.textContent = `${trick.cost}`;
     const affordable = coins >= trick.cost;
     buy.disabled = !affordable;
-    buy.title = affordable ? `unlock for ${trick.cost} coins` : `costs ${trick.cost} coins`;
+    buy.title = affordable ? `Unlock for ${trick.cost} coins` : `Costs ${trick.cost} coins`;
     buy.addEventListener("click", () => void this.#unlockTrick(trick));
 
     card.append(glyphs, name, buy);

@@ -1272,8 +1272,8 @@ function frame(now: number): void {
       // crashed and would reasonably expect a trace.
       const onToday = seed === todayUtc();
       crashedTextEl.textContent = onToday
-        ? `crashed at ${Math.floor(car.distance)} m`
-        : `crashed at ${Math.floor(car.distance)} m (archive run, not recorded)`;
+        ? `Crashed at ${Math.floor(car.distance)} m`
+        : `Crashed at ${Math.floor(car.distance)} m (archive run, not recorded)`;
 
       const burst = new CrashBurst(new THREE.Vector3(car.offset, 0.6, -car.distance));
       scene.add(burst.points);

@@ -97,13 +97,13 @@ export class CrewScreen {
     const input = document.createElement("input");
     input.maxLength = 32;
     input.required = true;
-    input.placeholder = "crew name";
-    input.setAttribute("aria-label", "crew name");
+    input.placeholder = "Crew name";
+    input.setAttribute("aria-label", "Crew name");
 
     const submit = document.createElement("button");
     submit.type = "submit";
     submit.className = "screen-action";
-    submit.textContent = "create crew";
+    submit.textContent = "Create crew";
 
     form.append(input, submit);
     form.addEventListener("submit", (e) => {
@@ -150,7 +150,7 @@ export class CrewScreen {
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "screen-action";
-    copy.textContent = "copy invite link";
+    copy.textContent = "Copy invite link";
     copy.addEventListener("click", () => {
       // Clipboard access can be refused (insecure origin, permissions), and
       // the link is on screen either way — so a refusal is a quieter message,

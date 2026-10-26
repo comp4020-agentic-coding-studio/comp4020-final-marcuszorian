@@ -31,7 +31,7 @@ export function skinHex(id: string | null): string {
 export function defaultSkinRow(skins: Skin[]): Skin {
   return {
     id: DEFAULT_SKIN_ID,
-    name: "magenta trim",
+    name: "Magenta trim",
     cost: 0,
     owned: true,
     equipped: !skins.some((s) => s.equipped),

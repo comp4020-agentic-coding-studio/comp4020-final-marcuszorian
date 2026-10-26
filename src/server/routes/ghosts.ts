@@ -13,7 +13,7 @@ export const ghostsRouter: Router = Router();
 ghostsRouter.get("/ghosts", optionalAuth, (req, res) => {
   const seed = req.query.seed;
   if (!isValidPastSeed(seed)) {
-    res.status(400).json({ error: "seed must be a YYYY-MM-DD date no later than today" });
+    res.status(400).json({ error: "Seed must be a YYYY-MM-DD date no later than today" });
     return;
   }
 

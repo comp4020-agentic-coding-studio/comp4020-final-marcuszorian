@@ -54,7 +54,7 @@ export function attachLive(server: Server): WebSocketServer {
       }
       if (message.type !== "subscribe") return;
       if (!isValidPastSeed(message.seed)) {
-        socket.send(JSON.stringify({ type: "error", error: "bad seed" }));
+        socket.send(JSON.stringify({ type: "error", error: "Bad seed" }));
         return;
       }
       socket.seed = message.seed;

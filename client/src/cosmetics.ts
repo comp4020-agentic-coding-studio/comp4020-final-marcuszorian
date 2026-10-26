@@ -98,10 +98,10 @@ export class Cosmetics {
     action.type = "button";
     action.className = "screen-action";
     if (skin.equipped) {
-      action.textContent = "worn";
+      action.textContent = "Worn";
       action.disabled = true;
     } else {
-      action.textContent = "wear";
+      action.textContent = "Wear";
       action.addEventListener("click", () =>
         void this.#equip(skin.id === DEFAULT_SKIN_ID ? null : skin.id),
       );
@@ -152,10 +152,10 @@ export class Cosmetics {
     action.type = "button";
     action.className = "screen-action";
     if (trick.equipped) {
-      action.textContent = "equipped";
+      action.textContent = "Equipped";
       action.disabled = true;
     } else {
-      action.textContent = "equip";
+      action.textContent = "Equip";
       action.addEventListener("click", () =>
         void this.#equipTrick(trick.id === DEFAULT_TRICK.id ? null : trick.id),
       );

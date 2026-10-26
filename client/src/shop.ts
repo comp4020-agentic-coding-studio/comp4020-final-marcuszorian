@@ -21,7 +21,8 @@ const sentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 export interface ShopHandlers {
   /** A purchase landed: the balance moved and Cosmetics has a new row. */
   onPurchase(coins: number, skins: Skin[]): void;
-  /** A trick purchase landed: Cosmetics has a new row to equip. */
+  /** A trick purchase landed: the balance moved (doc/adr/0020 removed the
+   * cosmetics trick-equip row this used to also refresh). */
   onTrickPurchase?(coins: number, tricks: Trick[]): void;
   onBlip?(kind: "ok" | "error"): void;
 }

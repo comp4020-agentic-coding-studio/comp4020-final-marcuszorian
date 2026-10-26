@@ -299,10 +299,11 @@ let trickComboStep = 0;
  * ramp. */
 let trickHold = 0;
 const TRICK_HOLD_SECONDS = 0.8;
-// The trick a ramp hit plays (doc/adr/0018) — always the player's equipped
-// trick, falling back to the always-free default when the server reports
-// nothing equipped (a fresh account, or one from before this shipped).
-let equippedTrick: TrickSequence = DEFAULT_TRICK;
+// Every owned trick, plus the always-free default (doc/adr/0013). A ramp hit
+// draws uniformly at random from this pool every time — doc/adr/0018 briefly
+// replaced that with a server-tracked "equipped" trick, but doc/adr/0020
+// reverted it: owning a trick is the only state a player has with it.
+const ownedTricks: TrickSequence[] = [DEFAULT_TRICK];
 /** Coins collected so far this run — folded into the balance at `postRunEnd`
  * alongside the distance, not credited coin-by-coin (doc/adr/0015). */
 let runCoins = 0;
@@ -497,30 +498,31 @@ function resetRun(): void {
   scoreEl.textContent = "0 m";
   runCoins = 0;
   coinCountEl.textContent = "0 coins";
-  void refreshEquippedTrick();
+  void refreshOwnedTricks();
 }
 
 /**
- * Re-reads which trick this account has equipped, so an equip made in
- * cosmetics draws into the very next run without needing a page reload.
- * Best-effort and non-blocking — `equippedTrick` already starts at
- * `DEFAULT_TRICK`, so a failed or slow fetch just means the run plays the
- * default, never with nothing to draw from.
+ * Re-reads which tricks this account owns, so a purchase made in the shop
+ * draws into the very next run without needing a page reload. Best-effort
+ * and non-blocking — `ownedTricks` already starts with `DEFAULT_TRICK`, so a
+ * failed or slow fetch just means the run plays with the default alone,
+ * never with nothing to draw from.
  */
-async function refreshEquippedTrick(): Promise<void> {
+async function refreshOwnedTricks(): Promise<void> {
   try {
     const { tricks } = await getTricks();
-    const equipped = tricks.find((t) => t.equipped);
-    equippedTrick = equipped
-      ? {
-          id: equipped.id,
-          name: equipped.name,
-          steps: JSON.parse(equipped.sequence) as TrickInput[],
-          bonusMetres: equipped.bonus_metres,
-        }
-      : DEFAULT_TRICK;
+    const owned = tricks
+      .filter((t) => t.owned)
+      .map((t): TrickSequence => ({
+        id: t.id,
+        name: t.name,
+        steps: JSON.parse(t.sequence) as TrickInput[],
+        bonusMetres: t.bonus_metres,
+      }));
+    ownedTricks.length = 0;
+    ownedTricks.push(DEFAULT_TRICK, ...owned);
   } catch {
-    // Offline or signed out — DEFAULT_TRICK is still a valid fallback.
+    // Offline or signed out — DEFAULT_TRICK alone is still a valid pool.
   }
 }
 
@@ -944,9 +946,11 @@ const shop = new Shop(shopEl, {
     titleScreen.setCoins(coins);
     cosmetics.render(skins);
   },
-  onTrickPurchase: (coins, tricks) => {
+  onTrickPurchase: (coins) => {
+    // A trick purchase only ever moves the balance now (doc/adr/0020
+    // removed cosmetics' trick-equip section, the one surface that used to
+    // need telling about the new row).
     titleScreen.setCoins(coins);
-    cosmetics.renderTricks(tricks);
   },
   onBlip: (kind) => audio.uiBlip(kind === "ok" ? "best" : "select"),
 });
@@ -1189,7 +1193,8 @@ function frame(now: number): void {
     const justCrashed = result.crashed;
 
     if (result.rampHit && !trick.active && result.ramp) {
-      trick = startTrick(equippedTrick);
+      const sequence = ownedTricks[Math.floor(Math.random() * ownedTricks.length)]!;
+      trick = startTrick(sequence);
       trickSettled = false;
       trickComboStep = 0;
       activeRamp = result.ramp;

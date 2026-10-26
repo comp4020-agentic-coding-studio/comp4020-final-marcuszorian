@@ -66,7 +66,7 @@ const STEPS: TutorialStep[] = [
   {
     screen: "cosmetics",
     targetSelector: "#cosmeticsScreen .screen-inner",
-    caption: "Wear a trim and equip a favorite trick (the one that plays when you hit a ramp).",
+    caption: "Wear a trim from the cosmetics screen.",
   },
   {
     screen: "racing",

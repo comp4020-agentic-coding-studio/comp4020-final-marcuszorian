@@ -68,6 +68,14 @@ drawn changes, not how the QTE plays out.
 
 ### Feature 1 — Equip a favorite trick
 
+**Reverted per doc/adr/0020.** This feature shipped as described below and
+as doc/adr/0018, then was cut in full: the equip concept, the migration
+column, the server/client plumbing, and the cosmetics trick section are all
+removed, and a ramp hit draws at random from owned tricks again, exactly as
+this section's own opening paragraph describes it working before this
+feature existed. The requirements below are left as written, not rewritten,
+as the record of what was built and then undone.
+
 **Server:**
 - `migrations/0007_trick_equip.sql`: add `equipped INTEGER NOT NULL DEFAULT
   0` to `user_tricks`, mirroring however `user_skins`/`skins` represents

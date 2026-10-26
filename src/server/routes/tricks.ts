@@ -1,11 +1,12 @@
 // The other coin sink. See doc/adr/0010-coin-economy.md and plan.md's "Shop &
-// server" section. Mirrors routes/skins.ts, including equip (doc/adr/0018).
+// server" section. Mirrors routes/skins.ts's catalogue/unlock shape; see
+// doc/adr/0020 for why there is no equip route here, unlike skins.
 import { Router } from "express";
 import { db } from "../db.ts";
 import { optionalAuth, requireAuth } from "../lib/auth.ts";
 import { balanceOf } from "../lib/balance.ts";
 import { param } from "../lib/params.ts";
-import { catalogue, equipTrick, unlockTrick } from "../lib/tricks.ts";
+import { catalogue, unlockTrick } from "../lib/tricks.ts";
 
 export const tricksRouter: Router = Router();
 
@@ -43,27 +44,4 @@ tricksRouter.post("/tricks/:id/unlock", requireAuth, (req, res) => {
 
   console.log(`[tricks] ${user.username} unlocked ${result.trick.id} (${result.coins} coins left)`);
   res.status(200).json({ coins: result.coins, tricks: catalogue(db, user.id) });
-});
-
-tricksRouter.post("/tricks/:id/equip", requireAuth, (req, res) => {
-  const user = req.user!;
-  const requested = param(req.params.id);
-  // 'default' is the always-available free trick — not a row in `tricks`,
-  // the same shape skins' 'default' id uses for the free magenta trim.
-  const trickId = requested === "default" ? null : requested;
-  const result = equipTrick(db, user.id, trickId);
-
-  if (!result.ok) {
-    console.log(`[tricks] ${user.username} refused equip ${requested}: ${result.reason}`);
-    // 403, not 404, for a trick that exists and isn't theirs — the same
-    // distinction routes/skins.ts's own equip route draws.
-    const status = result.reason === "unknown" ? 404 : 403;
-    res.status(status).json({
-      error: result.reason === "unknown" ? "No such trick" : "You have not unlocked that trick",
-    });
-    return;
-  }
-
-  console.log(`[tricks] ${user.username} equipped ${result.equipped ?? "default"}`);
-  res.status(200).json({ equipped: result.equipped, tricks: catalogue(db, user.id) });
 });

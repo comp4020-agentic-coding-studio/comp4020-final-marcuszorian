@@ -25,7 +25,7 @@ during the test.
 | Skins and tricks | Unlocking spends coins and logs the coins left. Equipping logs the skin. A purchase the player can't afford is refused. |
 | Crews | Creating a crew logs its id, max size and expiry. |
 | Accounts | A new account logs `[account] <name> created an account`. |
-| Restart | The server comes back on `0.0.0.0:8080` with `/live` for the WebSocket. **On restart the server falls back and syncs each user's previous high score**, so a high score earned before the restart is still the baseline afterwards. The `was` value after a restart should equal the best score from before it. |
+| Restart | The server comes back on `0.0.0.0:8080` with `/live` for the WebSocket. **Before every write the server reads the persisted best-run row for that user/track from SQLite** (`src/server/routes/runs.ts`), so a high score earned before the restart is still the baseline afterwards simply because the SQLite file itself survives the restart on the Fly volume. The `was` value after a restart should equal the best score from before it. |
 
 ## Observations
 
@@ -60,14 +60,14 @@ correctly from one run to the next (for example `Sai`: 389.09 → 389.59 →
   are unlimited size with no expiry.
 - New accounts: `Rem` (03:23:25) and `jfewaoihgieahgiuewa` (03:32:44).
 
-### Restarts (high-score sync fallback)
+### Restarts (direct SQLite read before each write)
 
 Two restarts occurred, at 03:31:42Z and 03:32:56Z. Each was a clean shutdown
 (`SIGINT`, `/data` unmounted) followed by a reboot and a start in about 1 s.
 `migrate.ts` ran before `index.ts`, and the server was listening again about
 2 s after the start.
 
-The post-restart high-score lines show the sync fallback working:
+The post-restart high-score lines show the persisted row being read correctly:
 
 | User | Last score before restart | `was` value after restart |
 | --- | --- | --- |
@@ -79,8 +79,11 @@ restart. `Rem` collected coins both before and after the restarts without
 trouble, and the account created between the restarts
 (`jfewaoihgieahgiuewa`) was saved and played normally afterwards.
 
-Note that this fallback is the reason scores survive a restart. It should not
-be read as proof that the primary store is itself durable across restarts.
+Note that this is direct evidence of the SQLite file's durability across a
+restart (it is the one and only persistence path, not a fallback for some
+other primary store), but the test only observed `tejas` and `Sai`'s scores
+surviving, not every player's, and did not directly inspect the database file
+on the volume.
 
 ### Errors and warnings
 
@@ -95,8 +98,9 @@ be read as proof that the primary store is itself durable across restarts.
 
 1. **Pass:** concurrent multi-user play, coin accounting, per-user high-score
    chains, unlocks and crew creation all behaved as expected.
-2. **Pass:** high scores sync correctly after a `flyctl` restart, via the
-   server's fallback.
+2. **Pass:** high scores persist correctly across a `flyctl` restart, because
+   the server reads the best-run row from SQLite before every write and the
+   SQLite file itself survives the restart on the Fly volume.
 3. **Minor:** a ~1–2 s window of proxy connection errors on each restart.
    Clients should retry the WebSocket on `/live`. A health check or
    `min_machines_running` setting could reduce this.

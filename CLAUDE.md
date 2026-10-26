@@ -16,9 +16,13 @@ the stack, storage or data model. To change one, write a record superseding
 it: an accepted record is never edited.
 
 Write the superseding record *before* changing the code, not after. Every
-reversal so far (`0006`, `0009`, `0011`) was decided in prose first and the
-diff followed from it, never a diff that got rationalized into a record
-afterward. A record written after the fact is a changelog, not a decision.
+reversal so far (`0006`, `0009`, `0011`) was drafted as part of the same
+sitting as the code that followed from it — not a diff that got rationalized
+into a record afterward — but the commits don't actually separate "record"
+from "diff" in time, so don't claim they prove an ordering they don't. From
+here on, land the ADR in its own commit before the commit that implements it,
+so the ordering is checkable in history, not just asserted in prose. A record
+written after the fact is a changelog, not a decision.
 
 ## Client code ships with a browser check, not just a green suite
 
@@ -29,8 +33,10 @@ the frame loop, cookie-based auth. C9 shipped three real bugs there
 recorded runs instead of the calendar) and `pnpm test` stayed green through
 all three, because every HTTP spec sends the cookie by hand and none runs a
 frame loop. Before calling a change to `client/` done, drive it in a real
-browser (or the two-browser-session harness `spec/realtime.test.ts` is modeled
-on) and say in the commit what you checked, not just that tests pass.
+browser (or two real browser windows with separate cookie jars, the manual
+check `spec/realtime.test.ts`'s API-level test is modeled on — no committed
+script automates this yet) and say in the commit what you checked, not just
+that tests pass.
 
 ## A guarantee is the test that runs, not the function that could
 

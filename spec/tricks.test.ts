@@ -17,7 +17,7 @@ async function createAccount(): Promise<string> {
   const res = await fetch(new URL("/api/account", baseUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: `trick-${crypto.randomUUID().slice(0, 8)}` }),
+    body: JSON.stringify({ username: `trick-${crypto.randomUUID().slice(0, 6)}` }),
   });
   expect(res.status, await res.text()).toBe(200);
   return tokenFrom(res);

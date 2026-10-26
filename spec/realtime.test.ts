@@ -107,7 +107,7 @@ it("a finished run reaches every already-open session in under a second", async 
   const seed = todayUtc();
   const [a, b] = await Promise.all([openSession(seed), openSession(seed)]);
   try {
-    const username = `live-${crypto.randomUUID().slice(0, 8)}`;
+    const username = `live-${crypto.randomUUID().slice(0, 6)}`;
     const token = await createAccount(username);
 
     const started = Date.now();
@@ -132,7 +132,7 @@ it("a finished run reaches every already-open session in under a second", async 
 it("a run aimed at another day is refused and reaches nobody", async () => {
   const session = await openSession(todayUtc());
   try {
-    const username = `otherday-${crypto.randomUUID().slice(0, 8)}`;
+    const username = `otherday-${crypto.randomUUID().slice(0, 6)}`;
     const token = await createAccount(username);
 
     const res = await fetch(new URL("/api/run-end", baseUrl), {
@@ -152,7 +152,7 @@ it("a run aimed at another day is refused and reaches nobody", async () => {
 
 it("a session that opens later is given what it missed", async () => {
   const seed = todayUtc();
-  const username = `backfill-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `backfill-${crypto.randomUUID().slice(0, 6)}`;
   const token = await createAccount(username);
   await postRun(token, 456.5, seed);
 
@@ -169,7 +169,7 @@ it("a session that opens later is given what it missed", async () => {
 
 it("only an improvement is broadcast", async () => {
   const seed = todayUtc();
-  const username = `pb-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `pb-${crypto.randomUUID().slice(0, 6)}`;
   const token = await createAccount(username);
   await postRun(token, 500, seed);
 
@@ -220,9 +220,9 @@ async function join(token: string, invite: string): Promise<void> {
 
 it("two crew members see each other's finished runs live; an outsider's crew does not", async () => {
   const seed = todayUtc();
-  const aName = `cw-a-${crypto.randomUUID().slice(0, 8)}`;
-  const bName = `cw-b-${crypto.randomUUID().slice(0, 8)}`;
-  const cName = `cw-c-${crypto.randomUUID().slice(0, 8)}`;
+  const aName = `cw-a-${crypto.randomUUID().slice(0, 6)}`;
+  const bName = `cw-b-${crypto.randomUUID().slice(0, 6)}`;
+  const cName = `cw-c-${crypto.randomUUID().slice(0, 6)}`;
   const [aToken, bToken, cToken] = await Promise.all([
     createAccount(aName),
     createAccount(bName),
@@ -257,7 +257,7 @@ it("two crew members see each other's finished runs live; an outsider's crew doe
 
 it("a crew-less session still sees a crew member's run, exactly as /api/ghosts would", async () => {
   const seed = todayUtc();
-  const authorName = `cw-author-${crypto.randomUUID().slice(0, 8)}`;
+  const authorName = `cw-auth-${crypto.randomUUID().slice(0, 6)}`;
   const authorToken = await createAccount(authorName);
   await join(authorToken, await makeCrew(authorToken));
 
@@ -279,8 +279,8 @@ it("a crew-less session still sees a crew member's run, exactly as /api/ghosts w
 
 it("a subscribe's backfill is crew-scoped too", async () => {
   const seed = todayUtc();
-  const memberName = `bf-in-${crypto.randomUUID().slice(0, 8)}`;
-  const outsiderName = `bf-out-${crypto.randomUUID().slice(0, 8)}`;
+  const memberName = `bf-in-${crypto.randomUUID().slice(0, 6)}`;
+  const outsiderName = `bf-out-${crypto.randomUUID().slice(0, 6)}`;
   const [memberToken, outsiderToken] = await Promise.all([
     createAccount(memberName),
     createAccount(outsiderName),

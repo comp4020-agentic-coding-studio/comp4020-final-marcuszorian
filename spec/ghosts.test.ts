@@ -27,7 +27,7 @@ async function createAccount(username: string): Promise<string> {
 const todayUtc = (): string => new Date().toISOString().slice(0, 10);
 
 it("a posted run shows up as a ghost for today", async () => {
-  const username = `player-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `player-${crypto.randomUUID().slice(0, 6)}`;
   const token = await createAccount(username);
 
   const runRes = await fetch(new URL("/api/run-end", baseUrl), {
@@ -52,7 +52,7 @@ it("a day nobody has played returns no ghosts", async () => {
 });
 
 it("rejects a second account with the same username", async () => {
-  const username = `dup-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `dup-${crypto.randomUUID().slice(0, 6)}`;
   await createAccount(username);
 
   const res = await fetch(new URL("/api/account", baseUrl), {
@@ -70,7 +70,7 @@ it("rejects a second account with the same username", async () => {
 // by hand. /api/me is the question the browser now has to ask instead, so
 // these pin its two answers.
 it("tells a signed-in browser who it is", async () => {
-  const username = `me-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `me-${crypto.randomUUID().slice(0, 6)}`;
   const token = await createAccount(username);
 
   const res = await fetch(new URL("/api/me", baseUrl), { headers: { cookie: `token=${token}` } });

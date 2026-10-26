@@ -609,7 +609,10 @@
         position: absolute;
         left: 16px;
         top: 96px;
-        width: 190px;
+        /* Wide enough for a 15-character username at its widest (15 capital
+           Ms, ~195px) plus the rank and distance columns either side,
+           measured in a real browser, without ellipsis-truncating. */
+        width: 340px;
         max-width: calc(100vw - 32px);
         font-size: 16px;
       }

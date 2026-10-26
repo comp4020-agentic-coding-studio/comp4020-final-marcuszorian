@@ -79,7 +79,7 @@
         position: absolute;
         top: 52px;
         left: 16px;
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         color: var(--gold);
@@ -196,7 +196,7 @@
         position: absolute;
         top: 16px;
         left: 16px;
-        font-size: 16px;
+        font-size: 30px;
         font-weight: 800;
         font-variant-numeric: tabular-nums;
         color: var(--gold);
@@ -611,8 +611,11 @@
         top: 96px;
         /* Wide enough for a 15-character username at its widest (15 capital
            Ms, ~195px) plus the rank and distance columns either side,
-           measured in a real browser, without ellipsis-truncating. */
-        width: 340px;
+           measured in a real browser, without ellipsis-truncating. Rows hug
+           their own name rather than stretching to this width (see
+           .leaderboard-name), so most rows leave slack here; this is the
+           floor the worst case needs. */
+        width: 280px;
         max-width: calc(100vw - 32px);
         font-size: 16px;
       }
@@ -726,12 +729,16 @@
       /* Lavender is the ghosts' colour everywhere else in the scene, but it
          fails small-text contrast — pink is the same family at 8.8:1, the same
          substitution .ghost-label already makes. */
+      /* Hugs its own content rather than stretching to fill the row: with a
+         fixed 1-to-1 flex it pushed .leaderboard-distance flush to the
+         panel's right edge, leaving a wide gap after any name shorter than
+         the 15-character limit. Usernames are capped at that limit
+         server-side (src/server/routes/account.ts), so there's no case left
+         where this needs truncating. */
       .leaderboard-name {
         color: var(--pink);
-        overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
-        flex: 1 1 auto;
+        flex: none;
       }
       .leaderboard-distance {
         color: var(--hotWhite);

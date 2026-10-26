@@ -15,7 +15,7 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
   const { distance, lane, seed, coins } = req.body ?? {};
 
   if (typeof distance !== "number" || !Number.isFinite(distance) || distance < 0) {
-    res.status(400).json({ error: "distance must be a non-negative number" });
+    res.status(400).json({ error: "Distance must be a non-negative number" });
     return;
   }
   const laneValue = typeof lane === "number" && Number.isFinite(lane) ? lane : null;
@@ -36,7 +36,7 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
   } else if (isValidPastSeed(seed)) {
     trackSeed = seed;
   } else {
-    res.status(400).json({ error: "seed must be a YYYY-MM-DD date no later than today" });
+    res.status(400).json({ error: "Seed must be a YYYY-MM-DD date no later than today" });
     return;
   }
 
@@ -47,7 +47,7 @@ runsRouter.post("/run-end", requireAuth, (req, res) => {
   // open across UTC midnight or someone with curl; both get the same answer.
   if (trackSeed !== todayUtc()) {
     res.status(403).json({
-      error: "past days are read-only — a run only records against today's track",
+      error: "Past days are read-only — a run only records against today's track",
     });
     return;
   }

@@ -78,7 +78,7 @@ export function userForCookie(header: string | undefined): AuthedUser | null {
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const user = userForCookie(req.headers.cookie);
   if (!user) {
-    res.status(401).json({ error: "sign in first (POST /api/account)" });
+    res.status(401).json({ error: "Sign in first (POST /api/account)" });
     return;
   }
 

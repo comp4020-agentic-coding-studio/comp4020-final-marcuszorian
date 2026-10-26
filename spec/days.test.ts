@@ -33,7 +33,7 @@ function shiftDay(delta: number): string {
 // yesterday. A past day's record is now closed, so what matters is that the
 // write is refused AND that the refusal leaves no trace behind.
 it("refuses a run posted against a past day, and records nothing", async () => {
-  const username = `history-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `history-${crypto.randomUUID().slice(0, 6)}`;
   const token = await createAccount(username);
   const yesterday = shiftDay(-1);
 
@@ -62,7 +62,7 @@ it("still serves a past day's ghosts to anyone who visits", async () => {
 });
 
 it("rejects a run posted against a day that hasn't happened yet", async () => {
-  const token = await createAccount(`future-${crypto.randomUUID().slice(0, 8)}`);
+  const token = await createAccount(`future-${crypto.randomUUID().slice(0, 6)}`);
   const tomorrow = shiftDay(1);
 
   const res = await fetch(new URL("/api/run-end", baseUrl), {
@@ -78,7 +78,7 @@ it("rejects a run posted against a day that hasn't happened yet", async () => {
 // "today" — which is the point: it is now a record of days played while they
 // were current, not a list of days somebody backfilled.
 it("/api/days reflects today once played, and stays newest-first", async () => {
-  const token = await createAccount(`days-${crypto.randomUUID().slice(0, 8)}`);
+  const token = await createAccount(`days-${crypto.randomUUID().slice(0, 6)}`);
   const today = shiftDay(0);
 
   const res = await fetch(new URL("/api/run-end", baseUrl), {

@@ -23,7 +23,7 @@ crewsRouter.post("/crews", requireAuth, (req, res) => {
   }
   for (const [label, value] of [["maxJoins", maxJoins], ["expiresInSeconds", expiresInSeconds]] as const) {
     if (value != null && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
-      res.status(400).json({ error: `${label} must be a positive number when given` });
+      res.status(400).json({ error: `${label[0]!.toUpperCase()}${label.slice(1)} must be a positive number when given` });
       return;
     }
   }

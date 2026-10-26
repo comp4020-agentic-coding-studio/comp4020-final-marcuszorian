@@ -13,7 +13,7 @@ function tokenFrom(res: Response): string {
 }
 
 async function createAccount(prefix = "crew"): Promise<{ token: string; username: string }> {
-  const username = `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+  const username = `${prefix}-${crypto.randomUUID().slice(0, 6)}`;
   const res = await fetch(new URL("/api/account", baseUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },

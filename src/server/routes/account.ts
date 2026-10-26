@@ -21,10 +21,20 @@ accountRouter.get("/me", requireAuth, (req, res) => {
   res.status(200).json({ username: user.username, ...row });
 });
 
+// The leaderboard panel (client/index.html's #leaderboard) is sized to fit a
+// name of exactly this length without ellipsis-truncating — the client's
+// <input maxlength> is cosmetic only, so this is the check that actually
+// holds the guarantee.
+const MAX_USERNAME_LENGTH = 15;
+
 accountRouter.post("/account", (req, res) => {
   const { username } = req.body ?? {};
   if (typeof username !== "string" || username.trim().length === 0) {
     res.status(400).json({ error: "Username is required" });
+    return;
+  }
+  if (username.trim().length > MAX_USERNAME_LENGTH) {
+    res.status(400).json({ error: `Username must be ${MAX_USERNAME_LENGTH} characters or fewer` });
     return;
   }
 

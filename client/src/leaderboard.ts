@@ -240,7 +240,7 @@ export class Leaderboard {
     if (isViewer) {
       const you = document.createElement("span");
       you.className = "leaderboard-you";
-      you.textContent = " you";
+      you.textContent = " You";
       name.append(you);
     }
 

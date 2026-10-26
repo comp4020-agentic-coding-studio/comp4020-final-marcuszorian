@@ -197,7 +197,7 @@ export class Tutorial {
     this.#caption.textContent = step.caption;
     const lastStep = this.#stepIndex === STEPS.length - 1;
     const nextButton = this.#overlay.querySelector<HTMLButtonElement>(".tutorial-next")!;
-    nextButton.textContent = lastStep ? "done" : "next";
+    nextButton.textContent = lastStep ? "Done" : "Next";
 
     this.#previewBox.hidden = step.preview === undefined;
     if (step.preview !== undefined) {

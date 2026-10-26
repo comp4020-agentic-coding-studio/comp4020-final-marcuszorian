@@ -58,8 +58,8 @@ export function shiftDay(seed: string, delta: number): string {
 }
 
 function labelFor(seed: string): string {
-  if (seed === todayUtc()) return "today";
-  if (seed === shiftDay(todayUtc(), -1)) return "yesterday";
+  if (seed === todayUtc()) return "Today";
+  if (seed === shiftDay(todayUtc(), -1)) return "Yesterday";
   return seed;
 }
 

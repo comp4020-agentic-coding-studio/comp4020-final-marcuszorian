@@ -81,10 +81,10 @@ export class SettingsMenu {
   sync(): void {
     const reduced = this.#handlers.isEffectsReduced();
     this.#effects.setAttribute("aria-pressed", String(reduced));
-    this.#effects.textContent = reduced ? "effects reduced" : "reduce effects";
+    this.#effects.textContent = reduced ? "Effects reduced" : "Reduce effects";
 
     const muted = this.#handlers.isMuted();
     this.#sound.setAttribute("aria-pressed", String(muted));
-    this.#sound.textContent = muted ? "sound muted" : "mute sound";
+    this.#sound.textContent = muted ? "Sound muted" : "Mute sound";
   }
 }

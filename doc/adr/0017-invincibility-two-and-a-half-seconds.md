@@ -22,6 +22,31 @@ timed-out tricks grant nothing.
 - The rest of 0016 applies unchanged: real `dt`, pausing stops the window, and
   coins, oil and ramps behave as before.
 
+## Alternatives considered
+
+**Keep it at 2s and address the complaint some other way** (e.g. slow the
+outcome hold, or start the window earlier in the trick animation). Rejected:
+playtesting's complaint was specifically that 2s doesn't give enough road to
+read before barriers resume, and 0016's own numbers show why a smaller fix
+doesn't reach it — part of the two seconds is already spent in the 0.8s
+slow-mo outcome hold, so trimming elsewhere only redistributes a window
+that's too short to begin with. The window itself needed to grow.
+
+**Go further (3.0s or more).** Rejected: 0016 already flags that an open
+window makes a run's survival stop depending on lane choice while it's up;
+every extra half-second compounds that, and pushed far enough it starts
+reading as "trick well, then drive blind through a stretch of barriers,"
+which undercuts 0012/0013's rule that barriers are what end a run. 2.5s is
+the length playtesting asked for, not a step toward turning invincibility
+into the dominant strategy.
+
+**Take up 0016's open "distance window rather than a time window" option.**
+Not taken: that tradeoff hasn't changed shape, it's just been asked to move
+by half a second in the direction 0016 already named. The HUD bar reads as
+time, the player asked for seconds, and reworking the invincibility model to
+answer a 0.5s tuning request is disproportionate. Still open if a future
+request needs the behaviour a distance window gives, not this one.
+
 ## Consequences
 
 - The window is 0.5s longer, so the car can pass through about 0.5s more road

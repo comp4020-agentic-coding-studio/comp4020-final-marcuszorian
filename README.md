@@ -13,9 +13,11 @@ to scale, it needs to be for *someone*. Clay Shirky's [situated
 software](https://web.archive.org/web/20040411202042/http://www.shirky.com/writings/situated_software.html)
 makes the same point from the other side: design for a group that already
 knows each other, and you can skip what strangers need. I took two games as
-models. Wordle gives everyone the same puzzle for one day. Dark Souls leaves
-other players' bloodstains on your path. A leaderboard ranks strangers; a
-ghost labelled "ushini, 340m" says *someone else was right here*. Good means:
+models. [Wordle](https://techcrunch.com/2022/01/12/josh-wardle-interview-wordle/)
+works, its maker says, because "it's one puzzle, and everybody is solving
+it". [Dark Souls](https://en.wikipedia.org/wiki/Dark_Souls_(video_game))
+leaves bloodstains that replay another player's last seconds where they
+died. A leaderboard ranks strangers; a ghost labelled "ushini, 340m" says *someone else was right here*. Good means:
 
 - **Your trace is something you drive past.** There is a ranked leaderboard
   too; [ADR 0009](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0009-leaderboard.md) argues that reversal, and the
@@ -58,9 +60,8 @@ Judged, by playing it in two browsers and with six people at once
 
 A ghost is a past run, still present on a road you can still drive. That is
 what vaporwave and synthwave are *about*. Mark Fisher's "hauntology" reads
-the aesthetic as refusing to let a future go, through deliberately worn
-media ([CCCB Lab,
-"Vaporwave"](https://lab.cccb.org/en/vaporwave-the-musical-wallpaper-of-lost-futures/)).
-So older days render more worn than today, and ghosts are lavender: not
+music like it as "a refusal to give up on the desire for the future"
+([Horta, CCCB Lab](https://www.cccb.org/en/w/articles/vaporwave-the-musical-wallpaper-of-lost-futures)).
+Older days render more worn than today, and ghosts are lavender: not
 the player's magenta or the road's cyan
 ([ADR 0003](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0003-visual-direction.md)).

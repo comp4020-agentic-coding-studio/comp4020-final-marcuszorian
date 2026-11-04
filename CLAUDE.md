@@ -1,13 +1,35 @@
-# Your harness
+# Harness for nightly build
 
-This file is yours, and it arrives empty on purpose. The rules you hold the
-agent to are part of what gets marked, so they should be rules you decided on.
+`README.md` is the argument: a ghost is a trace of someone you drive past, a
+day is a place, and the road is for a crew, not a crowd. The rules below hold
+work to that argument; `spec/` is where the checkable parts of it run. If a
+change would make a README sentence false, change the README in the same
+commit or don't make the change.
 
-Nothing about the template is recorded here. What the repo ships is explained
-where it lives --- `fly.toml`, the `Dockerfile`, the CI workflow and
-`spec/README.md` each say what they fix --- and the course website publishes the
-[final project brief](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/assessments/final-project/).
-What the agent needs to carry from any of it is your call.
+## What the app must never do
+
+- **Never show another player in motion.** A ghost arrives finished: one
+  position, after the run ends. No live cars, no positions streamed mid-run,
+  no "N driving now". ADR 0005 rejected both: live cars turn a place into a
+  race, and a counter says the ghosts weren't enough. Reversing it takes a superseding ADR, not a feature request.
+- **Never let a ghost be mistaken for a car.** Lavender means ghost, red means
+  obstacle, and nothing for sale may wear either or sit close to them
+  (`spec/ghost-colour.test.ts`, ADR 0003). A new trim, a ghost tint or a
+  palette change runs that spec before anything else.
+- **Never change yesterday.** A day's road is a pure function of its date
+  (ADR 0002) and a past day refuses new runs (ADR 0006). Nothing may touch
+  `track.ts` output for an existing seed, because every recorded ghost was
+  driven on that road.
+- **Never widen what a crew member sees beyond their crew** on the road,
+  live or on reload (`spec/crews.test.ts`, `spec/realtime.test.ts`).
+
+## Before adding a feature
+
+Ask the README's question first: does it change what a crash *means*, or only
+your score? If only your score, say so in its ADR and argue only that it
+breaks none of the guarantees above, as ADRs 0013–0017 do. Don't let it into
+the README's definition of good. Prefer saying no: README's "What I chose not
+to build" is part of the design.
 
 ## Decisions
 

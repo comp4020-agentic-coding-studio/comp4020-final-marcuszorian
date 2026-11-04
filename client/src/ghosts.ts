@@ -29,6 +29,19 @@ const BOB_SPEED = 1.4;
 
 const lavenderHsl = new THREE.Color(palette.lavender.three).getHSL({ h: 0, s: 0, l: 0 });
 
+// How far either side of lavender's hue a ghost may drift, so two ghosts side
+// by side are tellable apart. It was ±0.04, which let a ghost land 0.005 from
+// the purchasable `violet` trim — a ghost and a living car the same colour,
+// breaking ADR 0003's "lavender means ghost". spec/ghost-colour.test.ts pins
+// the margin; widen this and that test says whether you still can.
+export const GHOST_HUE_SPREAD = 0.012;
+
+/** The colour a given player's ghost is drawn in: lavender, nudged per name. */
+export function ghostColor(username: string): THREE.Color {
+  const hueOffset = ((hashString(username) % 1000) / 1000 - 0.5) * 2 * GHOST_HUE_SPREAD;
+  return new THREE.Color().setHSL(lavenderHsl.h + hueOffset, Math.min(1, lavenderHsl.s + 0.1), lavenderHsl.l);
+}
+
 interface GhostEntry {
   mesh: THREE.Group;
   label: HTMLDivElement;
@@ -205,12 +218,7 @@ export class GhostLayer {
   }
 
   #createEntry(username: string): GhostEntry {
-    const h = hashString(username);
-    // ±0.04 around lavender's own hue — distinct without drifting into a
-    // different named colour.
-    const hueOffset = ((h % 1000) / 1000 - 0.5) * 0.08;
-    const color = new THREE.Color().setHSL(lavenderHsl.h + hueOffset, Math.min(1, lavenderHsl.s + 0.1), lavenderHsl.l);
-    const mesh = createGhostCar(color);
+    const mesh = createGhostCar(ghostColor(username));
     mesh.position.y = 0.5;
     // A ghost that arrives over the socket while the title screen is up must
     // not pop into the portrait — the layer keeps streaming while hidden.
@@ -226,7 +234,7 @@ export class GhostLayer {
     const entry: GhostEntry = {
       mesh,
       label,
-      phase: (h % 628) / 100,
+      phase: (hashString(username) % 628) / 100,
       ghost: { username, distance: 0, lane: null }, // replaced by the caller
     };
     this.#entries.set(username, entry);

@@ -46,7 +46,7 @@ A review of the run-end route found coin credit and the best-run upsert as separ
 
 ### Six players against the real deploy - [f364f4f](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/f364f4fb355efc25b3ebeaa9b4418de142cac7e3)
 
-For the multi-user requirement I watched `flyctl logs` while six people played at once, through two live restarts. Coin accounting and high scores held with no cross-user mixups; evidence and gaps are in `docs/test/ing/multi-user-test-report.md`.
+For the multi-user requirement I watched `flyctl logs` while six people played at once, through two live restarts. Coin accounting and high scores held with no cross-user mixups; evidence and gaps are in `docs/test/ing/multi-user-test-report.md`. An earlier crew playtest on 17 October pushed me to make the road harder; the obstacles I added changed past roads too ([0459043](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/0459043f2b0b240c39676f4713c89792e76a8c5e), [write-up](docs/test/17-oct-playtest.md)).
 
 ### The README's own claims, checked - [8d46850](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/commit/8d46850c5f65591de008fa02f4f200baed81414a)
 

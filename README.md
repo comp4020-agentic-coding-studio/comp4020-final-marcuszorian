@@ -53,7 +53,8 @@ Each of these is a test in `spec/` that runs against the app:
 - older days are never less worn than newer ones (`archive-age.test.ts`)
 
 Judged, by playing it in two browsers and with six people at once
-([report](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/ing/multi-user-test-report.md)): whether a ghost
+([report](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/ing/multi-user-test-report.md),
+and a [crew playtest](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/17-oct-playtest.md)): whether a ghost
 *feels* like a person, and whether the look below reads as memory.
 
 ## Why it looks like this

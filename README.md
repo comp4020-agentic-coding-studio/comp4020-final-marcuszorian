@@ -24,7 +24,8 @@ died. A leaderboard ranks strangers; a ghost labelled "ushini, 340m" says *someo
   rank-free roster it replaced is kept as a good argument lost on purpose
   ([0007](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0007-day-roster.md), [0008](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0008-roster-top-ten.md)).
 - **A day is a place.** Every day has its own road and ghosts, you can go
-  back, and the past is read-only ([0006](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0006-past-days-are-read-only.md)).
+  back, and the past is read-only ([0006](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0006-past-days-are-read-only.md),
+  [0021](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0021-obstacle-kinds-are-epoch-gated.md)).
 - **It's for a crew.** Send a link to four friends and your road's ghosts
   become theirs alone ([0011](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/doc/adr/0011-crews.md)).
 - **A ghost is never a live car.** A finished run reaches every open session
@@ -47,15 +48,18 @@ Each of these is a test in `spec/` that runs against the app:
 - a finished run reaches other open sessions in under a second, and only
   improvements are sent (`realtime.test.ts`)
 - a past day refuses new runs but still shows its ghosts (`days.test.ts`)
+- a past day's road never regenerates with an obstacle it didn't have when
+  it was driven (`past-roads.test.ts`)
 - crews see only crew ghosts, live and on reload (`crews.test.ts`)
 - every stretch of road has a way through (`track-patterns.test.ts`)
 - no ghost is ever the colour of a car you can buy (`ghost-colour.test.ts`)
 - older days are never less worn than newer ones (`archive-age.test.ts`)
 
-Judged, by playing it in two browsers and with six people at once
-([report](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/ing/multi-user-test-report.md),
-and a [crew playtest](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/17-oct-playtest.md)): whether a ghost
-*feels* like a person, and whether the look below reads as memory.
+Judged, and written up rather than guessed at: a [crew playtest](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/17-oct-playtest.md)
+and a [six-person live test](https://github.com/comp4020-agentic-coding-studio/comp4020-final-marcuszorian/blob/main/docs/test/ing/multi-user-test-report.md),
+each with what players said and what changed because of it. What's judged
+this way: whether a ghost *feels* like a person, and whether the look below
+reads as memory.
 
 ## Why it looks like this
 

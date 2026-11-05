@@ -19,7 +19,15 @@ commit or don't make the change.
 - **Never change yesterday.** A day's road is a pure function of its date
   (ADR 0002) and a past day refuses new runs (ADR 0006). Nothing may touch
   `track.ts` output for an existing seed, because every recorded ghost was
-  driven on that road.
+  driven on that road. `(seed, distance)` purity is necessary but not
+  sufficient: 0012/0013/0015 each got that right for a new obstacle kind and
+  still broke this rule, because none of them asked whether turning the kind
+  on reached backwards into a seed that already had real runs recorded
+  against it (ADR 0021 — seven ghosts on `docs/test/17-oct-playtest.md`'s
+  road, broken by a feature that shipped the next day). A new obstacle kind
+  gates on `FEATURE_EPOCH`, or its own later constant if it ships after
+  one already exists: ask "does an old seed have a ghost that predates this
+  kind?", not just "is this kind's own placement a pure function of distance?"
 - **Never widen what a crew member sees beyond their crew** on the road,
   live or on reload (`spec/crews.test.ts`, `spec/realtime.test.ts`).
 

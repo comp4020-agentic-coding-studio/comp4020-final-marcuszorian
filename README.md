@@ -50,7 +50,8 @@ Each of these is a test in `spec/` that runs against the app:
 - a past day refuses new runs but still shows its ghosts (`days.test.ts`)
 - a past day's road never regenerates with an obstacle it didn't have when
   it was driven (`past-roads.test.ts`)
-- crews see only crew ghosts, live and on reload (`crews.test.ts`)
+- crews see only crew ghosts, live and on reload (`crews.test.ts`,
+  `realtime.test.ts`)
 - every stretch of road has a way through (`track-patterns.test.ts`)
 - no ghost is ever the colour of a car you can buy (`ghost-colour.test.ts`)
 - older days are never less worn than newer ones (`archive-age.test.ts`)

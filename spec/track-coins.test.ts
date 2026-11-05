@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK_LENGTH, chunkFor } from "../client/src/track.ts";
+import { CHUNK_LENGTH, chunkFor, FEATURE_EPOCH } from "../client/src/track.ts";
 
 // Coin trails are derived from gate rows (doc/adr/0015): every coin sits in a
 // lane a nearby gate row leaves open, never in a lane that row blocks — the
 // whole point is that the trail reads as "the line through the gate".
 // Sampled across several seeds, the same style as track-ramp.test.ts and
 // track-moving-barrier.test.ts, since placement is seed-dependent (ADR 0002).
-const SEEDS = ["2026-01-01", "2026-03-17", "2026-07-04", "2026-11-23"];
+//
+// Every seed here is on or after FEATURE_EPOCH (doc/adr/0021): coins are one
+// of the kinds the epoch gates off for an older seed, so a pre-epoch seed
+// would place none at all and this invariant would have nothing to sample.
+const SEEDS = [FEATURE_EPOCH, "2026-11-23", "2027-03-17", "2027-07-04"];
 const CHUNKS_TO_SAMPLE = 400; // CHUNK_LENGTH * 400 = 8000m
 
 describe("coin pickups sit in a lane a nearby gate leaves open", () => {

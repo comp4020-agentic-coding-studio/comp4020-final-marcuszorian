@@ -10,6 +10,20 @@
 export const CHUNK_LENGTH = 20;
 export const ROAD_HALF_WIDTH = 4;
 
+// The first seed the moving-barrier/oil/ramp/coin generator blocks may run
+// for (doc/adr/0021). `(seed, distance)` purity alone — which 0012/0013/0015
+// each argue carefully for a given kind — says nothing about whether turning
+// a kind on reaches backwards into a seed that was already live, with real
+// runs recorded against it, before the kind existed: it did, until this gate.
+// `0459043` (moving barriers, oil) shipped within UTC 2026-10-17; `2646f09`
+// (ramps) and `baabd9d` (coins) a few hours later, within UTC 2026-10-18. No
+// recorded activity exists on 2026-10-18 itself (the earliest multi-user
+// activity on record, `f364f4f`, is UTC 2026-10-19), so one epoch for all
+// four kinds is the first date nobody could have a pre-existing ghost on.
+// `chunkFor` below only emits `kind: "barrier"` — the one path untouched
+// since before `0459043` — for any seed earlier than this.
+export const FEATURE_EPOCH = "2026-10-18";
+
 /** Lane centres sit at -LANE_WIDTH, 0, +LANE_WIDTH. */
 export const LANE_WIDTH = 2.4;
 export const LANE_HALF_WIDTH = LANE_WIDTH / 2;
@@ -937,6 +951,14 @@ export function chunkFor(seed: string, index: number): Chunk {
     for (const lane of row.blocked) {
       obstacles.push({ kind: "barrier", lane, x: laneX(lane), z: -row.distance });
     }
+  }
+
+  // Everything below this point is a kind that shipped after FEATURE_EPOCH
+  // (doc/adr/0021). A seed earlier than the epoch gets static barriers only —
+  // exactly what the generator produced the day that road was actually live
+  // — because no kind below existed yet to have a ghost recorded against it.
+  if (seed < FEATURE_EPOCH) {
+    return { index, obstacles };
   }
 
   const movingRows = movingRowsThrough(seed, end);

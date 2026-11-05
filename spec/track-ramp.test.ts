@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK_LENGTH, chunkFor, RAMP_MIN_LEAD_TO_HAZARD } from "../client/src/track.ts";
+import { CHUNK_LENGTH, chunkFor, FEATURE_EPOCH, RAMP_MIN_LEAD_TO_HAZARD } from "../client/src/track.ts";
 
 // Ramp placement's own invariant (doc/adr/0013, doc/adr/0014): each ramp
 // pairs with one specific single-lane static-barrier row — the one it
@@ -9,7 +9,11 @@ import { CHUNK_LENGTH, chunkFor, RAMP_MIN_LEAD_TO_HAZARD } from "../client/src/t
 // existing sampled moving-barrier solvability check in track.ts itself —
 // rather than asserted for one hand-picked case, since the generator is
 // seed-dependent by construction (doc/adr/0002).
-const SEEDS = ["2026-01-01", "2026-03-17", "2026-07-04", "2026-11-23"];
+//
+// Every seed here is on or after FEATURE_EPOCH (doc/adr/0021): ramps are one
+// of the kinds the epoch gates off for an older seed, so a pre-epoch seed
+// would place none at all and this invariant would have nothing to sample.
+const SEEDS = [FEATURE_EPOCH, "2026-11-23", "2027-03-17", "2027-07-04"];
 const CHUNKS_TO_SAMPLE = 400; // CHUNK_LENGTH * 400 = 8000m, well past where speed caps out
 
 describe("a ramp pairs with the single-lane barrier it jumps", () => {

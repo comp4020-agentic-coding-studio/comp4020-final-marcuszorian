@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHUNK_LENGTH, chunkFor } from "../client/src/track.ts";
+import { CHUNK_LENGTH, chunkFor, FEATURE_EPOCH } from "../client/src/track.ts";
 
 // A moving barrier's sweep crosses every lane over its cycle (its amplitude
 // spans a full lane either side of the lane it's centred on), so it must
@@ -11,7 +11,12 @@ import { CHUNK_LENGTH, chunkFor } from "../client/src/track.ts";
 // into it — hit in actual play. Sampled across several seeds, the same style
 // as spec/track-ramp.test.ts, since placement is seed-dependent by
 // construction (doc/adr/0002).
-const SEEDS = ["2026-01-01", "2026-03-17", "2026-07-04", "2026-11-23"];
+//
+// Every seed here is on or after FEATURE_EPOCH (doc/adr/0021): moving
+// barriers are one of the kinds the epoch gates off for an older seed, so a
+// pre-epoch seed would place none at all and this invariant would have
+// nothing to sample.
+const SEEDS = [FEATURE_EPOCH, "2026-11-23", "2027-03-17", "2027-07-04"];
 const CHUNKS_TO_SAMPLE = 400; // CHUNK_LENGTH * 400 = 8000m, well past where speed caps out
 const MOVING_LANE_CLEARANCE = CHUNK_LENGTH;
 

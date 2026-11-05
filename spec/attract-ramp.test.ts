@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { chooseLane, obstaclesAhead } from "../client/src/attract.ts";
 import * as track from "../client/src/track.ts";
-import { chunkFor } from "../client/src/track.ts";
+import { chunkFor, FEATURE_EPOCH } from "../client/src/track.ts";
 import type { Chunk, Lane, Obstacle } from "../client/src/track.ts";
 
 // doc/adr/0019: once the hazard check alone has nothing to say (the current
@@ -11,8 +11,11 @@ import type { Chunk, Lane, Obstacle } from "../client/src/track.ts";
 // than hazard avoidance: a ramp in the only safe lane is still driven over,
 // and the pre-existing barrier/moving-barrier dodge logic above it is
 // untouched either way.
-
-const SEEDS = ["2026-01-01", "2026-03-17", "2026-07-04", "2026-11-23"];
+//
+// Every seed here is on or after FEATURE_EPOCH (doc/adr/0021): ramps are one
+// of the kinds the epoch gates off for an older seed, so findIsolatedRamp
+// below would find nothing to dodge on a pre-epoch seed.
+const SEEDS = [FEATURE_EPOCH, "2026-11-23", "2027-03-17", "2027-07-04"];
 const CHUNKS_TO_SAMPLE = 400; // matches spec/track-ramp.test.ts's span
 
 // Finding a real-seed case needs the generator's internal caches walked

@@ -61,7 +61,7 @@ const STEPS: TutorialStep[] = [
   {
     screen: "shop",
     targetSelector: ".shop-tricks",
-    caption: "...and on tricks: each one shows the keystrokes it needs to land.",
+    caption: "...and on tricks: each one shows the inputs it needs to land.",
   },
   {
     screen: "cosmetics",
@@ -97,7 +97,7 @@ const STEPS: TutorialStep[] = [
     targetSelector: "#trickPrompt",
     preview: "ramp",
     caption:
-      "Hit a ramp and a keystroke sequence pops up here: land it before the timer bar runs out for a " +
+      "Hit a ramp and an input sequence pops up here: land it before the timer bar runs out for a " +
       "distance bonus and a few seconds of invincibility. Miss it and you just keep driving, no penalty.",
   },
   {
